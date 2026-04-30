@@ -1,0 +1,47 @@
+# apphosting.yaml
+# Learn more: https://firebase.google.com/docs/app-hosting/configure
+
+# Reference secrets from Secret Manager
+# Use `firebase apphosting:secrets:set NAME` to add them in production
+secrets:
+  - variable: GEMINI_API_KEY
+    secret: GEMINI_API_KEY
+  - variable: WORKOUTS_PRIVATE_KEY
+    secret: WORKOUTS_PRIVATE_KEY
+  - variable: WORKOUTS_PROJECT_ID
+    secret: WORKOUTS_PROJECT_ID
+  - variable: WORKOUTS_CLIENT_EMAIL
+    secret: WORKOUTS_CLIENT_EMAIL
+
+# Environment variables that are not sensitive
+env:
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: "AIzaSyDw1p1aJrKsupMyF1Qz6M-VYAMinsc1VBw"
+  - variable: NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+    value: "runningdashboard-5b97f.firebaseapp.com"
+  - variable: NEXT_PUBLIC_FIREBASE_PROJECT_ID
+    value: "runningdashboard-5b97f"
+  - variable: NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+    value: "runningdashboard-5b97f.firebasestorage.app"
+  - variable: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+    value: "772251861374"
+  - variable: NEXT_PUBLIC_FIREBASE_APP_ID
+    value: "1:772251861374:web:4174a195959de619af732f"
+  - variable: NEXT_PUBLIC_WORKOUTS_API_KEY
+    value: "AIzaSyAybtt3LPQTfPQ1UdQ9fgboOeAruUvB5xo"
+  - variable: NEXT_PUBLIC_WORKOUTS_AUTH_DOMAIN
+    value: "myfitnessapp-409d7.firebaseapp.com"
+  - variable: NEXT_PUBLIC_WORKOUTS_PROJECT_ID
+    value: "myfitnessapp-409d7"
+  - variable: NEXT_PUBLIC_WORKOUTS_STORAGE_BUCKET
+    value: "myfitnessapp-409d7.firebasestorage.app"
+  - variable: NEXT_PUBLIC_WORKOUTS_MESSAGING_SENDER_ID
+    value: "73944863798"
+  - variable: NEXT_PUBLIC_WORKOUTS_APP_ID
+    value: "1:73944863798:web:2308374875cd5edc93b497"
+  - variable: NEXT_PUBLIC_TRAINING_CALENDAR_ID
+    value: "127ebc0906c07fd266c05736c7c1dbc93e5b85fe0214f9cf086e769ac4ecb6f2@group.calendar.google.com"
+  - variable: RUN_LAT
+    value: "52.7537"
+  - variable: RUN_LON
+    value: "13.2367"
