@@ -78,7 +78,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No messages provided' }, { status: 400 });
     }
 
-    const history = messages.slice(0, -1);
+    // Format history for Gemini SDK and strip leading 'model' messages
+    let history = messages.slice(0, -1).map((m: any) => ({
+      role: m.role,
+      parts: [{ text: m.content }]
+    }));
+
+    while (history.length > 0 && history[0].role === 'model') {
+      history.shift();
+    }
+
     const lastMessage = messages[messages.length - 1].content;
 
     const model = getCoachModel();

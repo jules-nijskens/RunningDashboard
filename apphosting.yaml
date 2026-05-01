@@ -40,8 +40,17 @@ env:
   - variable: NEXT_PUBLIC_WORKOUTS_APP_ID
     value: "1:73944863798:web:2308374875cd5edc93b497"
   - variable: NEXT_PUBLIC_TRAINING_CALENDAR_ID
-    value: "127ebc0906c07fd266c05736c7c1dbc93e5b85fe0214f9cf086e769ac4ecb6f2@group.calendar.google.com"
+    value: "127ebc0906c07fd266c05736c7c1dbc93e5b85fe0214f9cf086e769ac4ecb6f2@group.\
+      calendar.google.com"
   - variable: RUN_LAT
     value: "52.7537"
   - variable: RUN_LON
     value: "13.2367"
+  - variable: GEMINI_API_KEY
+    secret: GEMINI_API_KEY
+  - variable: WORKOUTS_PRIVATE_KEY
+    secret: WORKOUTS_PRIVATE_KEY
+  - variable: WORKOUTS_PROJECT_ID
+    secret: WORKOUTS_PROJECT_ID
+  - variable: WORKOUTS_CLIENT_EMAIL
+    secret: WORKOUTS_CLIENT_EMAIL
