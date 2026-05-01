@@ -12,6 +12,10 @@ secrets:
     secret: WORKOUTS_PROJECT_ID
   - variable: WORKOUTS_CLIENT_EMAIL
     secret: WORKOUTS_CLIENT_EMAIL
+  - variable: SERVICE_ACCOUNT_EMAIL
+    secret: SERVICE_ACCOUNT_EMAIL
+  - variable: SERVICE_ACCOUNT_KEY
+    secret: SERVICE_ACCOUNT_KEY
 
 # Environment variables that are not sensitive
 env:

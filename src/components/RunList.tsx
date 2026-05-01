@@ -86,7 +86,11 @@ export default function RunList() {
                   onClick={() => run.id && handleRowClick(run.id)}
                   className="hover:bg-blue-50/50 cursor-pointer transition-all group/row relative"
                 >
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">{run.date}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">
+                    {run.timestamp 
+                      ? new Date(run.timestamp).toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' }).replace(',', '')
+                      : run.date}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <span className={`px-3 py-1 inline-flex text-[10px] leading-5 font-black uppercase rounded-full ${
                       run.runType === 'Easy' ? 'bg-green-100 text-green-700' :

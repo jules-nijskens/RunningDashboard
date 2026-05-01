@@ -133,8 +133,8 @@ export async function POST(request: Request) {
     }
 
     if (needsPredictionUpdate) {
-      // Trigger background update
-      refreshPredictionData().catch(err => console.error("Coach: Prediction update failed", err));
+      console.log("Coach: Triggering prediction refresh...");
+      await refreshPredictionData();
     }
 
     return NextResponse.json({

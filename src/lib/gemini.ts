@@ -61,9 +61,12 @@ export async function generateRunReview(
   try {
     const result = await model.generateContent(prompt);
     const response = await result.response;
-    let text = response.text().replace(/```json/g, "").replace(/```/g, "").trim();
-    return JSON.parse(text);
+    const text = response.text();
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("No JSON found in response");
+    return JSON.parse(jsonMatch[0]);
   } catch (error) {
+    console.error("Run Review Error:", error);
     return { short: "Error connecting to coach.", long: "Failed to generate review." };
   }
 }
@@ -95,9 +98,11 @@ export async function generatePrediction(
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
-  const runsContext = recentRuns.map(r => 
-    `- ${r.date}: ${r.runType}, ${r.distance}km, Pace: ${r.averagePace}, HR: ${r.averageHeartRate || 'N/A'}`
-  ).join('\n');
+  const runsContext = recentRuns.length > 0 
+    ? recentRuns.map(r => `- ${r.date}: ${r.runType}, ${r.distance}km, Pace: ${r.averagePace}, HR: ${r.averageHeartRate || 'N/A'}`).join('\n')
+    : "No recent runs available.";
+
+  console.log(`Gemini: Generating prediction. Runs context length: ${runsContext.length} chars.`);
 
   const prompt = `
     You are an expert running coach. Analyze this athlete's recent training to predict their current 10K fitness and the probability of hitting their goal.
@@ -108,9 +113,11 @@ export async function generatePrediction(
     RECENT RUNS (Latest 20):
     ${runsContext}
     
+    IMPORTANT: You MUST provide an estimate even if the run history is sparse. Base it on the athlete's goals, strategy report, and any available metrics.
+    
     TASK:
-    1. Estimate current 10K race time based on all runs (consider volume, consistency, and specific intensity sessions). Ignore old Personal Bests; focus strictly on what the recent data shows.
-    2. Calculate probability (0-100) of hitting the primary goal by August 1st.
+    1. Estimate current 10K race time based on all available data (volume, consistency, and specific intensity sessions).
+    2. Calculate probability (0-100) of hitting the primary goal.
     3. Provide a brief, punchy coach insight (max 25 words).
     4. Provide a detailed reasoning (2-3 paragraphs) explaining the data points, trends, and specific runs that led to this prediction.
     
@@ -126,11 +133,24 @@ export async function generatePrediction(
   try {
     const result = await model.generateContent(prompt);
     const response = await result.response;
-    let text = response.text().replace(/```json/g, "").replace(/```/g, "").trim();
-    return JSON.parse(text);
+    const text = response.text();
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.warn("Gemini: No JSON found in response. Response text:", text);
+      throw new Error("No JSON found in response");
+    }
+    const parsed = JSON.parse(jsonMatch[0]);
+    console.log("Gemini: Successfully generated prediction:", parsed.currentEstimate);
+    return parsed;
   } catch (error) {
     console.error("Prediction Error:", error);
-    return null;
+    // Return a fallback prediction instead of null to avoid hiding the card
+    return {
+      currentEstimate: "--:--",
+      probability: 50,
+      coachComment: "I'm having trouble analyzing your data right now. Check back in a moment.",
+      detailedReasoning: "The AI analysis encountered an error. This usually happens when the model is overloaded or the data structure is unexpected."
+    };
   }
 }
 

@@ -6,7 +6,7 @@ import { collection, addDoc, doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { Run, RunType, Lap } from '@/types/run';
 
-const RUN_TYPES: RunType[] = ['Easy', 'Long Run', 'Tempo', 'Interval'];
+const RUN_TYPES: RunType[] = ['Easy', 'Long Run', 'Tempo', 'Interval', 'Race', 'Time Trial'];
 
 interface GarminCSVRow {
   'Laps'?: string;

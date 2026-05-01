@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 interface CalendarEvent {
   id: string;
@@ -33,9 +35,32 @@ const getWeatherEmoji = (code: number) => {
 
 export default function PlannedRuns() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [hasRunToday, setHasRunToday] = useState(false);
   const [weather, setWeather] = useState<WeatherData>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const checkTodayRun = async () => {
+      try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        const q = query(
+          collection(db, 'runs'),
+          where('timestamp', '>=', today.getTime()),
+          where('timestamp', '<', tomorrow.getTime())
+        );
+        const snapshot = await getDocs(q);
+        setHasRunToday(!snapshot.empty);
+      } catch (err) {
+        console.error("Error checking today's run:", err);
+      }
+    };
+    checkTodayRun();
+  }, []);
 
   useEffect(() => {
     const fetchPlannedRunsAndWeather = async () => {
@@ -234,6 +259,10 @@ export default function PlannedRuns() {
                 const startDateStr = event.start.dateTime || event.start.date || '';
                 const dateObj = startDateStr ? new Date(startDateStr) : null;
                 
+                // Skip if it's today and we already ran
+                const isToday = dateObj && dateObj.toDateString() === new Date().toDateString();
+                if (isToday && hasRunToday) return null;
+
                 // Create a local date key (YYYY-MM-DD) that matches Open-Meteo format
                 let dateKey = '';
                 if (dateObj) {
@@ -250,7 +279,7 @@ export default function PlannedRuns() {
                 return (
                   <tr key={event.id} className="hover:bg-blue-50/30 transition-colors group">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">
-                      {dateObj ? dateObj.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' }) : 'TBD'}
+                      {dateObj ? dateObj.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' }).replace(',', '') : 'TBD'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800">
                       {dayWeather ? (

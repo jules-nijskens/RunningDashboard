@@ -1,4 +1,4 @@
-export type RunType = 'Easy' | 'Long Run' | 'Tempo' | 'Interval' | 'Race';
+export type RunType = 'Easy' | 'Long Run' | 'Tempo' | 'Interval' | 'Race' | 'Time Trial';
 
 export interface Lap {
   lapNumber: number;
