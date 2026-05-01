@@ -3,15 +3,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Allow the owner (you) to read and write everything
-    // Replace 'YOUR_FIREBASE_UID' with your actual UID from the Firebase Console
+    // Allow the owner to read and write everything based on email
     match /{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == 'YOUR_FIREBASE_UID';
+      allow read, write: if request.auth != null && request.auth.token.email == 'jls.nijskens@gmail.com';
     }
-    
-    // Alternatively, if you want a more multi-user friendly approach (standard):
-    // match /runs/{runId} {
-    //   allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
-    // }
   }
 }
