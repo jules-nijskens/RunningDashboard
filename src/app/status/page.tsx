@@ -5,31 +5,30 @@ import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import Link from 'next/link';
 
-const DEFAULT_REPORT = `Your training is currently at a critical pivot point, transitioning from a high-volume half-marathon base into a specialized 10K speed block. You are managing this transition as a 194 cm runner based in Oranienburg, Netherlands-born, and working as a senior product manager in Berlin.
+const DEFAULT_REPORT = `Your training is currently focused on transitioning from a high-volume base into a specialized 10K speed block, managed for your 194 cm frame and senior PM lifestyle in Berlin.
 
-1. Physiological Profile & Base
-- Heart Rate Metrics: Your Lactate Threshold Heart Rate (LTHR) is 176 bpm, with a likely maximum range of 192–196 bpm.
-- Current Aerobic State: You have established a strong aerobic foundation, recently completing a 22km long run (avg 149 bpm) and an efficient 10km recovery run (avg 146 bpm).
-- Thermal Sensitivity: Recent data shows a significant cardiovascular drift during warm-weather runs, with heart rate increases noted around the 13km mark when exposed to direct sun.
+1. Current Training Phase & Objectives
+- Current Phase: Transitioning from half-marathon base to 10K specific speed-work.
+- Primary Objective: Sub-47:30 10K at the Adidas run on August 1st.
+- Secondary Objective: Establishing a sub-1:45 half-marathon base for late October.
+- Volume Target: 40–45 km per week, peaking at 50 km in mid-July.
 
-2. Biomechanical Evolution (2025 vs. 2026)
-Data comparisons between your late 2025 races and your current 2026 runs show significant mechanical improvements:
-- Cadence: Your "Easy" autopilot has risen to 165 spm, which is nearly as fast as your 5K race turnover was in September 2025 (166.8 spm).
-- Efficiency: You have reduced your vertical oscillation (bounce) from 9.9 cm during your October 2025 10K race to 8.5 cm during recent easy runs.
-- Impact Management: While your Ground Contact Time (GCT) is currently higher during easy runs (≈288 ms), your improved "gliding" mechanics reduce the total structural load on your long levers.
+2. Physiological Status & Fitness
+- Aerobic Base: Strong foundation established with recent 22km long runs and efficient recovery efforts (avg 146-149 bpm).
+- Threshold Metrics: Estimated Lactate Threshold Heart Rate (LTHR) is 176 bpm, with a max range of 192–196 bpm.
+- Environmental Factors: Notable cardiovascular drift in warm weather (>20°C), typically appearing after 13km of direct exposure.
+- Recovery State: Currently managing high accumulated fatigue from an extended 4-week load block.
 
-3. Immediate Strategy: The "Triple Load" Week
-You are currently in a high-fatigue "Week 4" after postponing your deload by one week.
-- Recent Load: You completed a tough 22km Sunday effort followed by a 10km run and an office strength workout on Tuesday.
-- Upcoming Test: A 5km Time Trial is scheduled for Friday, with a target pace of approximately 4:30–4:35/km to establish a baseline for your speed block.
-- Weekend Adjustment: To accommodate the time trial fatigue, your Sunday long run has been capped at 18km.
+3. Biomechanics & Form Trends
+- Cadence Evolution: Easy run "autopilot" has successfully risen to 165 spm, significantly improving efficiency from 2025 levels.
+- Vertical Oscillation: Improved "gliding" mechanics have reduced bounce from 9.9 cm to 8.5 cm, lowering structural impact.
+- Ground Contact: Current GCT remains around 288 ms during easy efforts; focus remains on reducing this as intensity increases.
 
-4. Long-Term Roadmap (August 1st Race)
-Following your mid-May holiday, you will begin an 11-week Runna 10K training plan:
-- Primary Goal: Sub-47:30 10K at the Adidas run on August 1st.
-- Training Volume: Weekly mileage will aim for 40–45 km, peaking at 50 km in mid-July.
-- Strength Routine: You are maintaining a 2+1 structure consisting of two office workouts (Monday/Wednesday) and one home stability session (Saturday) to protect your joints during higher-intensity intervals.
-- Next Milestone: Sub-1:45 half-marathon attempt in late October.`;
+4. Short-Term Strategy (Next 2-3 Weeks)
+- Immediate Focus: Completing the current "Triple Load" block and preparing for a baseline 5km Time Trial.
+- Upcoming Test: Friday 5km Time Trial (Target: 4:30–4:35/km) to set training zones for the upcoming speed block.
+- Strength Integration: Maintaining 2 office sessions (Mon/Wed) and 1 home stability session (Sat) to support increased interval intensity.
+- Adjustments: Sunday long runs are temporarily capped at 18km to accommodate Time Trial recovery.`;
 
 export default function StatusPage() {
   const [content, setContent] = useState<string>('');

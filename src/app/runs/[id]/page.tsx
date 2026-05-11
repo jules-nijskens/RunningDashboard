@@ -5,6 +5,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Run } from '@/types/run';
 import { useParams, useRouter } from 'next/navigation';
+import ReactMarkdown from 'react-markdown';
 
 export default function RunDetail() {
   const params = useParams();
@@ -121,9 +122,18 @@ export default function RunDetail() {
                   Coach Review
                 </h2>
                 <div className="bg-gradient-to-br from-gray-900 to-gray-800 p-6 rounded-2xl text-gray-100 shadow-xl border-l-4 border-blue-500">
-                  <p className="text-lg leading-relaxed font-medium italic">
-                    {run.coachReview}
-                  </p>
+                  <div className="text-lg leading-relaxed font-medium italic">
+                    <ReactMarkdown
+                      components={{
+                        ul: ({node, ...props}) => <ul className="list-disc ml-6 mb-4 space-y-2" {...props} />,
+                        ol: ({node, ...props}) => <ol className="list-decimal ml-6 mb-4 space-y-2" {...props} />,
+                        li: ({node, ...props}) => <li className="pl-1" {...props} />,
+                        p: ({node, ...props}) => <p className="mb-4 last:mb-0" {...props} />,
+                      }}
+                    >
+                      {run.coachReview}
+                    </ReactMarkdown>
+                  </div>
                 </div>
               </div>
             )}

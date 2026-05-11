@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { auth } from '@/lib/firebase';
 import { RefreshCw, AlertCircle, Brain } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 
 interface PredictionData {
   currentEstimate: string;
@@ -215,9 +216,18 @@ export default function PredictionCard() {
           <span className="text-2xl mt-1">🧠</span>
           <div>
             <p className="text-[10px] font-black text-blue-600 uppercase mb-1 tracking-wider">Coach&apos;s Insight</p>
-            <p className="text-base font-bold text-gray-800 leading-snug">
-              {prediction.coachComment}
-            </p>
+            <div className="text-base font-bold text-gray-800 leading-snug">
+              <ReactMarkdown
+                components={{
+                  ul: ({node, ...props}) => <ul className="list-disc ml-4 mb-2 space-y-1" {...props} />,
+                  ol: ({node, ...props}) => <ol className="list-decimal ml-4 mb-2 space-y-1" {...props} />,
+                  li: ({node, ...props}) => <li className="pl-1" {...props} />,
+                  p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                }}
+              >
+                {prediction.coachComment}
+              </ReactMarkdown>
+            </div>
           </div>
         </div>
       </div>

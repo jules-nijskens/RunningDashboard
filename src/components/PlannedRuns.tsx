@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import ReactMarkdown from 'react-markdown';
 
 interface CalendarEvent {
   id: string;
@@ -328,21 +329,17 @@ export default function PlannedRuns() {
                             <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Workout Instructions</span>
                             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{workoutName}</span>
                           </div>
-                          <div className="space-y-3">
-                            {description.split('\n').map((line, i) => {
-                              const trimmedLine = line.trim();
-                              if (!trimmedLine) return null;
-                              const isRepsHeader = trimmedLine.toLowerCase().includes('reps of:');
-                              const isBullet = trimmedLine.startsWith('•') || trimmedLine.startsWith('*') || trimmedLine.startsWith('-');
-                              return (
-                                <p key={i} className={`
-                                  ${isRepsHeader ? 'font-bold text-gray-900 mt-2' : ''} 
-                                  ${isBullet ? 'ml-4' : ''}
-                                `}>
-                                  {trimmedLine}
-                                </p>
-                              );
-                            })}
+                          <div className="space-y-3 prose-sm">
+                            <ReactMarkdown
+                              components={{
+                                ul: ({node, ...props}) => <ul className="list-disc ml-4 mb-2 space-y-1" {...props} />,
+                                ol: ({node, ...props}) => <ol className="list-decimal ml-4 mb-2 space-y-1" {...props} />,
+                                li: ({node, ...props}) => <li className="pl-1" {...props} />,
+                                p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                              }}
+                            >
+                              {description}
+                            </ReactMarkdown>
                           </div>
                           <div className="absolute top-full left-6 border-8 border-transparent border-t-white drop-shadow-sm"></div>
                         </div>

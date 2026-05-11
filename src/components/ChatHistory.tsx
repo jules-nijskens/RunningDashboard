@@ -120,6 +120,9 @@ export default function ChatHistory() {
                             components={{
                               strong: ({node, ...props}) => <span className="font-black text-gray-900" {...props} />,
                               p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                              ul: ({node, ...props}) => <ul className="list-disc ml-4 mb-2 space-y-1" {...props} />,
+                              ol: ({node, ...props}) => <ol className="list-decimal ml-4 mb-2 space-y-1" {...props} />,
+                              li: ({node, ...props}) => <li className="pl-1" {...props} />,
                             }}
                           >
                             {m.content}

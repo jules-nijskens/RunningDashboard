@@ -9,7 +9,7 @@ export async function GET(request: Request) {
     console.log("Prediction API: GET request received");
     // 0. Verify Auth
     const user = await verifyAuth(request);
-    console.log("Prediction API: Auth verified for", user.email);
+    console.log("Prediction API: Auth verified for", user.email, "UID:", user.uid);
 
     // 1. Try to get cached prediction first from Admin DB
     try {

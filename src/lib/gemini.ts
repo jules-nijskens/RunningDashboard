@@ -77,7 +77,29 @@ export async function updateTrainingReport(currentReport: string, runData: Run) 
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
-  const prompt = `Update this report based on the new run if significant. Return ONLY text.\nREPORT: ${currentReport}\nNEW RUN: ${runData.date}, ${runData.distance}km, ${runData.averagePace}/km.`;
+  const prompt = `
+    You are an expert running coach updating an athlete's "Training Status & Strategy" report.
+    
+    The report MUST always follow this exact 4-header structure:
+    1. Current Training Phase & Objectives
+    2. Physiological Status & Fitness
+    3. Biomechanics & Form Trends
+    4. Short-Term Strategy (Next 2-3 Weeks)
+
+    NEW DATA TO INTEGRATE:
+    Run on ${runData.date}: ${runData.distance}km, ${runData.averagePace}/km, ${runData.averageHeartRate || 'N/A'}bpm.
+    Athlete Notes: ${runData.summary || "None"}
+
+    TASK:
+    - Update the existing report content based on this new run if it contains significant insights (e.g., new PBs, signs of fatigue, biomechanical improvements, or changes in short-term focus).
+    - Maintain all long-term context that is still relevant.
+    - If no significant update is needed for a specific section, keep it as is.
+    - RETURN THE FULL UPDATED REPORT TEXT.
+    - DO NOT change the header names or numbering.
+
+    CURRENT REPORT:
+    ${currentReport}
+  `;
 
   try {
     const result = await model.generateContent(prompt);
@@ -166,16 +188,20 @@ CONTEXTUAL AWARENESS:
 - Always consider "today's date" (provided in the data) when giving advice.
 - Review past runs (history) to see if the athlete is under or over-training.
 - Review upcoming runs (planned schedule) to help the athlete prepare for what's next.
-- If a hard workout is planned for tomorrow, and the athlete did a hard run today, intervene and suggest a rest or recovery day.
 
-When asked about progress, data, or race predictions, use the "get_athlete_data" tool to see current status, including the latest race time prediction and the detailed reasoning behind it. Use this reasoning to provide consistent and data-backed advice.
+ATHLETE TRAINING STATUS & STRATEGY REPORT (IMPORTANT):
+When updating the strategy report, you MUST strictly adhere to this 4-header structure:
+1. Current Training Phase & Objectives
+2. Physiological Status & Fitness
+3. Biomechanics & Form Trends
+4. Short-Term Strategy (Next 2-3 Weeks)
 
-STRATEGY UPDATES (IMPORTANT):
-- If you identify information during the chat that is relevant for the long-term "Athlete Training Status & Strategy" report (e.g., a new injury, a change in schedule, or a performance breakthrough):
+STRATEGY UPDATES:
+- If you identify information during the chat that is relevant for the long-term report (e.g., a new injury, a change in schedule, or a performance breakthrough):
   1. Describe the proposed update to the athlete.
   2. Ask for their explicit confirmation to update the report.
   3. ONLY call the "update_strategy_report" tool AFTER the athlete has confirmed.
-- To update the report, you MUST first use "get_athlete_data" to get the current content, then provide the full, revised text to "update_strategy_report".
+- To update the report, you MUST first use "get_athlete_data" to get the current content, then provide the full, revised text using the exact 4-header structure to "update_strategy_report".
 
 If the athlete wants to change their primary goals, use "update_goals".
 
