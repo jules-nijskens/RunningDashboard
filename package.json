@@ -14,10 +14,10 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "dotenv": "^17.4.2",
-    "firebase": "^12.12.1",
-    "firebase-admin": "^13.8.0",
-    "lucide-react": "^1.14.0",
-    "next": "16.2.4",
+    "firebase": "^12.13.0",
+    "firebase-admin": "^13.9.0",
+    "lucide-react": "^1.16.0",
+    "next": "16.2.6",
     "papaparse": "^5.5.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -25,14 +25,14 @@
     "recharts": "^3.8.1"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@tailwindcss/postcss": "^4.3.0",
+    "@types/node": "^20.19.41",
     "@types/papaparse": "^5.5.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.4",
-    "tailwindcss": "^4",
-    "typescript": "^5"
+    "eslint-config-next": "16.2.6",
+    "tailwindcss": "^4.3.0",
+    "typescript": "^5.9.3"
   }
 }
