@@ -4,7 +4,7 @@ import { Run, Workout } from "@/types/run";
 export async function generateRunReview(
   runData: Run, 
   trainingReport?: string,
-  context?: { recentRuns: Run[], recentWorkouts: Workout[], upcomingRuns?: any[] }
+  context?: { recentRuns: Run[], recentWorkouts: Workout[], upcomingRuns?: any[], userStats?: any }
 ) {
   const apiKey = (process.env.GEMINI_API_KEY || "").replace(/['"]/g, "");
   
@@ -35,10 +35,22 @@ export async function generateRunReview(
     `- ${u.start?.dateTime || u.start?.date}: ${u.summary}`
   ).join('\n') || "None scheduled.";
 
+  const userStats = context?.userStats || {};
+  const healthPerformanceContext = `
+    - VO2 Max: ${userStats.performance?.vo2max || 'N/A'}
+    - Lactate Threshold: ${userStats.performance?.thresholdPace || 'N/A'} @ ${userStats.performance?.thresholdHR || 'N/A'} bpm
+    - HRV (7d Avg): ${userStats.health?.hrv7d || 'N/A'} ms
+    - HRV Status: ${userStats.health?.hrvStatus || 'N/A'}
+    - Resting HR (7d Avg): ${userStats.health?.rhr7d || 'N/A'} bpm
+    - Sleep (7d Avg Score): ${userStats.health?.sleep || 'N/A'}
+  `;
+
   const prompt = `
     You are an expert running coach for an 194cm athlete. August 1st Goal: Sub-47:30 10K.
+    Today's Date: ${new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
     
     STRATEGY: ${trainingReport || "N/A"}
+    PHYSIOLOGICAL CONTEXT: ${healthPerformanceContext}
     RECENT HISTORY (7 Days):
     Runs: ${recentRunsContext}
     Gym: ${recentWorkoutsContext}
@@ -47,15 +59,31 @@ export async function generateRunReview(
     ${upcomingRunsContext}
 
     CURRENT RUN:
+    - Type: ${runData.runType}
     - Date: ${runData.date}, ${runData.weather || "Unknown Weather"}
     - Metrics: ${runData.distance}km, ${runData.duration}, ${runData.averagePace}/km, ${runData.averageHeartRate}bpm, ${runData.averageCadence}spm
     - Notes: ${runData.summary}
     - Laps: ${lapsString}
     
-    Review this run. Be punchy. Take upcoming runs into account (e.g. if a hard run is next, suggest extra recovery).
+    Review this run. Be punchy and specific. 
+    IMPORTANT: Always explicitly reference the run being reviewed (e.g., "In today's ${runData.runType} run...", "Your ${runData.distance}km session on ${runData.date}...") so the athlete knows exactly which activity you are discussing.
+    Take upcoming runs into account (e.g. if a hard run is next, suggest extra recovery).
+    Use the PHYSIOLOGICAL CONTEXT to explain performance variations (e.g., if HRV is unbalanced or sleep is low, acknowledge that the athlete might have felt flatter).
+
+    DATA INTERPRETATION RULES:
+    1. LAST LAP SENSITIVITY: If the final lap is very short (e.g., < 100m) and slow, assume the athlete forgot to stop their watch immediately. Mention the main run stats but ignore the "tail" in your performance analysis.
+    2. CADENCE ANALYSIS: Do not rely solely on the "Average Cadence" metric if the laps show segments with very low cadence or walking. Look at the cadence for the *running* laps to determine the athlete's true form.
+    
+    TASK:
+    1. Analyze the "Laps" to identify the structure (e.g., which laps were warm-up/cool-down vs. the main effort).
+    2. Compare the actual performance against any matching "UPCOMING PLANNED RUNS" for today's date.
     
     RETURN ONLY JSON:
-    { "short": "max 12 words", "long": "3-4 sentences" }
+    { 
+      "short": "max 12 words", 
+      "long": "3-4 sentences",
+      "structure": "A detailed factual breakdown of what the run actually entailed based on laps (e.g., '2K warmup, 5K main effort at 4:35/km, 1K cooldown'). Mention if it matched the plan."
+    }
   `;
 
   try {
@@ -70,16 +98,25 @@ export async function generateRunReview(
     return { short: "Error connecting to coach.", long: "Failed to generate review." };
   }
 }
-
-export async function updateTrainingReport(currentReport: string, runData: Run) {
+export async function updateTrainingReport(currentReport: string, runData: Run, userStats: any = {}) {
   const apiKey = (process.env.GEMINI_API_KEY || "").replace(/['"]/g, "");
-  if (!apiKey) return currentReport;
+  if (!apiKey) return { report: currentReport, status: userStats.status };
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
+  const healthPerformanceContext = `
+    - VO2 Max: ${userStats.performance?.vo2max || 'N/A'}
+    - Lactate Threshold: ${userStats.performance?.thresholdPace || 'N/A'} @ ${userStats.performance?.thresholdHR || 'N/A'} bpm
+    - HRV (7d Avg): ${userStats.health?.hrv7d || 'N/A'} ms
+    - HRV Status: ${userStats.health?.hrvStatus || 'N/A'}
+    - RHR: ${userStats.health?.rhr || 'N/A'} bpm
+    - Sleep (7d Avg Score): ${userStats.health?.sleep || 'N/A'}
+  `;
+
   const prompt = `
-    You are an expert running coach updating an athlete's "Training Status & Strategy" report.
-    
+    You are an expert running coach updating an athlete's "Training Status & Strategy" report and overall Training Focus.
+    Today's Date: ${new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+
     The report MUST always follow this exact 4-header structure:
     1. Current Training Phase & Objectives
     2. Physiological Status & Fitness
@@ -89,13 +126,21 @@ export async function updateTrainingReport(currentReport: string, runData: Run) 
     NEW DATA TO INTEGRATE:
     Run on ${runData.date}: ${runData.distance}km, ${runData.averagePace}/km, ${runData.averageHeartRate || 'N/A'}bpm.
     Athlete Notes: ${runData.summary || "None"}
+    Current Physiological Metrics: ${healthPerformanceContext}
+    Current Training Focus Status: ${userStats.status || "N/A"}
 
     TASK:
-    - Update the existing report content based on this new run if it contains significant insights (e.g., new PBs, signs of fatigue, biomechanical improvements, or changes in short-term focus).
-    - Maintain all long-term context that is still relevant.
-    - If no significant update is needed for a specific section, keep it as is.
-    - RETURN THE FULL UPDATED REPORT TEXT.
-    - DO NOT change the header names or numbering.
+    1. Update the existing report content based on this new run AND the current physiological metrics.
+    2. Review and update the "Training Status" (focus). Valid values: "Productive", "Peaking", "Maintenance", "Recovery", "Overreaching", "Detraining". 
+       - If metrics like HRV or Sleep are trending poorly, or if the run performance contradicts the current VO2 Max/Threshold data, adjust the status and the sections 2 and 4 accordingly.
+    3. Maintain all long-term context that is still relevant.
+    4. If no significant update is needed for a specific section, keep it as is.
+
+    RETURN ONLY JSON:
+    {
+      "report": "the full updated report text",
+      "status": "the updated training focus status"
+    }
 
     CURRENT REPORT:
     ${currentReport}
@@ -103,9 +148,18 @@ export async function updateTrainingReport(currentReport: string, runData: Run) 
 
   try {
     const result = await model.generateContent(prompt);
-    return (await result.response).text().trim();
-  } catch {
-    return currentReport;
+    const response = await result.response;
+    const text = response.text();
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("No JSON found in response");
+    const parsed = JSON.parse(jsonMatch[0]);
+    return {
+      report: parsed.report || currentReport,
+      status: parsed.status || userStats.status
+    };
+  } catch (error) {
+    console.error("Update Report Error:", error);
+    return { report: currentReport, status: userStats.status };
   }
 }
 
@@ -121,27 +175,36 @@ export async function generatePrediction(
   const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
   const runsContext = recentRuns.length > 0 
-    ? recentRuns.map(r => `- ${r.date}: ${r.runType}, ${r.distance}km, Pace: ${r.averagePace}, HR: ${r.averageHeartRate || 'N/A'}`).join('\n')
+    ? recentRuns.map(r => `- ${r.date}: ${r.runType}, ${r.distance}km, Avg Pace: ${r.averagePace}, HR: ${r.averageHeartRate || 'N/A'}${r.aiDescription ? `\n  Structure: ${r.aiDescription}` : ''}`).join('\n')
     : "No recent runs available.";
 
   console.log(`Gemini: Generating prediction. Runs context length: ${runsContext.length} chars.`);
 
   const prompt = `
     You are an expert running coach. Analyze this athlete's recent training to predict their current 10K fitness and the probability of hitting their goal.
+    Today's Date: ${new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
     
     ATHLETE GOAL: ${userStats.goals?.join(', ') || "Sub-47:30 10K by August 1st"}
     STRATEGY REPORT: ${strategyReport}
+
+    HEALTH & PERFORMANCE METRICS:
+    - VO2 Max: ${userStats.performance?.vo2max || 'N/A'} (Updated: ${userStats.performance?.lastUpdated || 'Unknown'})
+    - Lactate Threshold: ${userStats.performance?.thresholdPace || 'N/A'} @ ${userStats.performance?.thresholdHR || 'N/A'} bpm
+    - HRV (7d Avg): ${userStats.health?.hrv7d || 'N/A'} ms (Updated: ${userStats.health?.lastUpdated || 'Unknown'})
+    - HRV Status: ${userStats.health?.hrvStatus || 'N/A'}
+    - Resting HR: ${userStats.health?.rhr || 'N/A'} bpm
+    - Sleep (7d Avg): ${userStats.health?.sleep || 'N/A'}
     
     RECENT RUNS (Latest 20):
     ${runsContext}
     
-    IMPORTANT: You MUST provide an estimate even if the run history is sparse. Base it on the athlete's goals, strategy report, and any available metrics.
+    IMPORTANT: Pay close attention to the "Structure" (aiDescription) for each run. This describes the actual breakdown (e.g., distinguishing warmup from main effort). Use the pace and intensity of the *main effort* described in the structure to anchor your fitness estimate, rather than just the average pace of the entire activity.
     
     TASK:
     1. Estimate current 10K race time based on all available data (volume, consistency, and specific intensity sessions).
     2. Calculate probability (0-100) of hitting the primary goal.
     3. Provide a brief, punchy coach insight (max 25 words).
-    4. Provide a detailed reasoning (2-3 paragraphs) explaining the data points, trends, and specific runs that led to this prediction.
+    4. Provide a detailed reasoning (2-3 paragraphs) explaining the data points, trends, and specific runs that led to this prediction. Be specific about dates and run types (e.g., "The pace during your July 12th tempo run...") so the athlete can identify the sessions you are referring to.
     
     RETURN ONLY JSON:
     {
@@ -185,22 +248,32 @@ You have access to the athlete's full history, including runs, gym workouts, and
 Your goal is to help the athlete reach their goals (currently Sub-47:30 10K by August 1st).
 
 CONTEXTUAL AWARENESS:
-- Always consider "today's date" (provided in the data) when giving advice.
-- Review past runs (history) to see if the athlete is under or over-training.
+- You MUST ALWAYS check the current date before giving advice. Today's Date is provided in the athlete data.
+- Review past runs (history) to see if the athlete is under or over-training. Be specific: mention the date and type of run when referencing specific activities (e.g., "Your workout last Tuesday...").
+- PHYSIOLOGICAL CONTEXT: You have access to 7-day averages for HRV, RHR, and Sleep. Use these trends to judge "Readiness". 
+    - HRV Status (Balanced/Unbalanced/Low): This is your primary indicator for training load adjustments.
+    - Sleep (7d Avg Score): Use this to explain fatigue levels.
+    - Performance Metrics (VO2 Max, Lactate Threshold): Use these to anchor your pace and fitness expectations.
+- IMPORTANT: For recent runs, pay close attention to the "aiDescription" field. This contains the AI's structural breakdown of the run (e.g., distinguishing warmup from main effort). Use this to understand the actual quality of the session rather than just the average metrics.
 - Review upcoming runs (planned schedule) to help the athlete prepare for what's next.
 
-ATHLETE TRAINING STATUS & STRATEGY REPORT (IMPORTANT):
-When updating the strategy report, you MUST strictly adhere to this 4-header structure:
-1. Current Training Phase & Objectives
-2. Physiological Status & Fitness
-3. Biomechanics & Form Trends
-4. Short-Term Strategy (Next 2-3 Weeks)
+DATA INTERPRETATION RULES:
+1. LAST LAP SENSITIVITY: If a run's final lap is very short (e.g., < 100m) and slow, assume the athlete stopped their watch late. Ignore this "tail" in your analysis.
+2. CADENCE ANALYSIS: Do not rely solely on "Average Cadence" if a run included walking or significant breaks. Base your form analysis on the cadence during the active running segments/laps.
 
-STRATEGY UPDATES:
-- If you identify information during the chat that is relevant for the long-term report (e.g., a new injury, a change in schedule, or a performance breakthrough):
-  1. Describe the proposed update to the athlete.
-  2. Ask for their explicit confirmation to update the report.
-  3. ONLY call the "update_strategy_report" tool AFTER the athlete has confirmed.
+TRAINING STATUS & STRATEGY:
+- There is a high-level "Training Status" badge on the dashboard. Valid values are: "Productive", "Peaking", "Maintenance", "Recovery", "Overreaching", "Detraining".
+- There is also a detailed "Athlete Training Status & Strategy" report with 4 headers:
+  1. Current Training Phase & Objectives
+  2. Physiological Status & Fitness
+  3. Biomechanics & Form Trends
+  4. Short-Term Strategy (Next 2-3 Weeks)
+
+UPDATES:
+- If the athlete's data or current state changes (e.g., injury, high fatigue, or peak fitness):
+  1. Propose an update to the "Training Status" (the badge) AND/OR the detailed strategy report.
+  2. Ask for explicit confirmation.
+  3. ONLY call the "update_status" or "update_strategy_report" tools AFTER confirmation.
 - To update the report, you MUST first use "get_athlete_data" to get the current content, then provide the full, revised text using the exact 4-header structure to "update_strategy_report".
 
 If the athlete wants to change their primary goals, use "update_goals".
@@ -214,6 +287,21 @@ export const coachTools: any[] = [
       {
         name: "get_athlete_data",
         description: "Get the athlete's current goals, PBs, strategy report, and recent activities (runs/workouts).",
+      },
+      {
+        name: "update_status",
+        description: "Update the high-level Training Status badge (e.g., Productive, Recovery).",
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            status: { 
+              type: SchemaType.STRING, 
+              enum: ["Productive", "Peaking", "Maintenance", "Recovery", "Overreaching", "Detraining"],
+              description: "The new training status." 
+            }
+          },
+          required: ["status"]
+        }
       },
       {
         name: "update_strategy_report",

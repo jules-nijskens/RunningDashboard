@@ -69,15 +69,23 @@ export async function POST(request: Request) {
 
     const runData = await request.json();
 
-    // 1. Fetch current strategy report (Using Admin DB)
+    // 1. Fetch current strategy report & user stats (Using Admin DB)
     let currentReport = "";
+    let userStats: any = {};
     try {
-      const reportSnap = await adminDb.doc('settings/training_report').get();
+      const [reportSnap, statsSnap] = await Promise.all([
+        adminDb.doc('settings/training_report').get(),
+        adminDb.doc('settings/user_stats').get()
+      ]);
+      
       if (reportSnap.exists) {
         currentReport = reportSnap.data()?.content || "";
       }
+      if (statsSnap.exists) {
+        userStats = statsSnap.data();
+      }
     } catch (err) {
-      console.error("Fetch report failed:", err);
+      console.error("Fetch stats/report failed:", err);
     }
 
     // 2. Look up weather automatically
@@ -131,18 +139,29 @@ export async function POST(request: Request) {
     const review = await generateRunReview(runData, currentReport, {
       recentRuns,
       recentWorkouts,
-      upcomingRuns: runData.upcomingRuns
+      upcomingRuns: runData.upcomingRuns,
+      userStats
     });
 
-    // 5. Update Report
+    // 5. Update Report & Status
     if (currentReport) {
-      const updatedReport = await updateTrainingReport(currentReport, runData);
+      const { report: updatedReport, status: updatedStatus } = await updateTrainingReport(currentReport, runData, userStats);
       
-      if (updatedReport && updatedReport.trim() !== currentReport.trim()) {
+      const reportChanged = updatedReport && updatedReport.trim() !== currentReport.trim();
+      const statusChanged = updatedStatus && updatedStatus !== userStats.status;
+
+      if (reportChanged) {
         await adminDb.doc('settings/training_report').set({ 
           content: updatedReport,
           lastUpdated: new Date().toISOString(),
           updatedBy: 'AI Coach'
+        }, { merge: true });
+      }
+
+      if (statusChanged) {
+        await adminDb.doc('settings/user_stats').set({ 
+          status: updatedStatus,
+          lastUpdated: new Date().toISOString()
         }, { merge: true });
       }
     }

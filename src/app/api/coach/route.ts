@@ -106,6 +106,14 @@ export async function POST(request: Request) {
 
       if (call.name === 'get_athlete_data') {
         toolResponse = await getAthleteData({ upcomingRuns, today });
+      } else if (call.name === 'update_status') {
+        const { status } = call.args as any;
+        await adminDb.doc('settings/user_stats').set({
+          status,
+          lastUpdated: new Date().toISOString()
+        }, { merge: true });
+        toolResponse = { status: `Training status updated to ${status} successfully.` };
+        needsPredictionUpdate = true;
       } else if (call.name === 'update_strategy_report') {
         const { content } = call.args as any;
         await adminDb.doc('settings/training_report').set({

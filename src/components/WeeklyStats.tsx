@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { collection, query, orderBy, getDocs, Timestamp } from 'firebase/firestore';
-import { db, workoutsDb } from '@/lib/firebase';
+import { collection, query, orderBy, getDocs } from 'firebase/firestore';
+import { db, auth } from '@/lib/firebase';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList } from 'recharts';
 import { Activity, Calendar, Trophy } from 'lucide-react';
 
@@ -28,15 +28,34 @@ export default function WeeklyStats() {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        console.log("WeeklyStats: Starting fetch...");
         // 1. Get Completed Runs
-        const runsSnap = await getDocs(query(collection(db, 'runs'), orderBy('timestamp', 'asc')));
-        const runs = runsSnap.docs.map(doc => doc.data());
+        let runs: any[] = [];
+        try {
+          console.log("WeeklyStats: Fetching runs from", db.app.options.projectId);
+          const runsSnap = await getDocs(query(collection(db, 'runs'), orderBy('timestamp', 'asc')));
+          runs = runsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          console.log(`WeeklyStats: Successfully fetched ${runs.length} runs`);
+        } catch (runsErr: any) {
+          console.error("WeeklyStats: ERROR fetching runs:", runsErr.message, runsErr.code);
+        }
 
         // 2. Get Workouts
         let workouts: any[] = [];
-        if (workoutsDb) {
-          const workoutsSnap = await getDocs(query(collection(workoutsDb, 'workouts'), orderBy('date', 'asc')));
-          workouts = workoutsSnap.docs.map(doc => doc.data());
+        try {
+          const idToken = await auth.currentUser?.getIdToken();
+          if (idToken) {
+            const wRes = await fetch('/api/workouts', {
+              headers: { 'Authorization': `Bearer ${idToken}` }
+            });
+            if (wRes.ok) {
+              const wData = await wRes.json();
+              workouts = wData.workouts || [];
+              console.log(`WeeklyStats: Successfully fetched ${workouts.length} workouts via API`);
+            }
+          }
+        } catch (workoutsErr: any) {
+          console.error("WeeklyStats: ERROR fetching workouts via API:", workoutsErr.message);
         }
 
         // 3. Get Planned Runs (Google Calendar)

@@ -68,4 +68,8 @@ const adminWorkoutsDb = admin.apps.find(app => app?.name === 'workouts-admin')
   ? admin.firestore(admin.app('workouts-admin')) 
   : null;
 
-export { adminDb, adminWorkoutsDb };
+const workoutsAdminAuth = admin.apps.find(app => app?.name === 'workouts-admin')
+  ? admin.auth(admin.app('workouts-admin'))
+  : null;
+
+export { adminDb, adminWorkoutsDb, workoutsAdminAuth };

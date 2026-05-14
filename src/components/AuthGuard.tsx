@@ -1,43 +1,21 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { auth, workoutsAuth, googleProvider } from '@/lib/firebase';
-import { onAuthStateChanged, signInWithPopup, signInWithCredential, signOut, User, GoogleAuthProvider } from 'firebase/auth';
+import { auth, googleProvider } from '@/lib/firebase';
+import { onAuthStateChanged, signInWithPopup, signOut, User, GoogleAuthProvider } from 'firebase/auth';
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [workoutsUser, setWorkoutsUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let primaryResolved = false;
-    let workoutsResolved = !workoutsAuth;
-
-    const checkLoading = () => {
-      if (primaryResolved && workoutsResolved) {
-        setLoading(false);
-      }
-    };
-
-    // Listen to primary project auth
-    const unsubscribePrimary = onAuthStateChanged(auth, (u) => {
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      primaryResolved = true;
-      checkLoading();
+      setLoading(false);
     });
 
-    // Listen to workouts project auth
-    const unsubscribeWorkouts = workoutsAuth ? onAuthStateChanged(workoutsAuth, (u) => {
-      setWorkoutsUser(u);
-      workoutsResolved = true;
-      checkLoading();
-    }) : () => {};
-
-    return () => {
-      unsubscribePrimary();
-      unsubscribeWorkouts();
-    };
+    return () => unsubscribe();
   }, []);
 
   const handleLogin = async () => {
@@ -45,22 +23,11 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       setLoading(true);
       setError(null);
       
-      // Sign into primary project
       const result = await signInWithPopup(auth, googleProvider);
       const credential = GoogleAuthProvider.credentialFromResult(result);
       
       if (credential?.accessToken) {
         sessionStorage.setItem('google_calendar_token', credential.accessToken);
-      }
-      
-      // Sign into workouts project using the same credential (no second popup!)
-      if (workoutsAuth && credential) {
-        try {
-          await signInWithCredential(workoutsAuth, credential);
-        } catch (e: unknown) {
-          console.warn("Secondary auth failed with credential, falling back to popup", e);
-          await signInWithPopup(workoutsAuth, googleProvider);
-        }
       }
     } catch (err: unknown) {
       console.error("Login failed:", err);
@@ -71,10 +38,8 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
   const handleLogout = async () => {
     await signOut(auth);
-    if (workoutsAuth) await signOut(workoutsAuth);
     sessionStorage.removeItem('google_calendar_token');
     setUser(null);
-    setWorkoutsUser(null);
   };
 
   if (loading) {
@@ -82,14 +47,13 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-4">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Authenticating Projects...</p>
+          <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Authenticating...</p>
         </div>
       </div>
     );
   }
 
-  // If not logged into primary OR (secondary exists but not logged in)
-  if (!user || (workoutsAuth && !workoutsUser)) {
+  if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
         <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center border border-gray-100">

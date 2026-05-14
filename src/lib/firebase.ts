@@ -11,30 +11,12 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-const workoutProjectConfig = {
-  apiKey: process.env.NEXT_PUBLIC_WORKOUTS_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_WORKOUTS_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_WORKOUTS_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_WORKOUTS_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_WORKOUTS_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_WORKOUTS_APP_ID,
-};
-
 // Initialize Primary App (Garmin Dashboard)
 const app = getApps().find(a => a.name === '[DEFAULT]') || initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
 
-// Initialize Secondary App (Workouts Project)
-let workoutsDb: any = null;
-let workoutsAuth: any = null;
-if (workoutProjectConfig.apiKey) {
-  const workoutsApp = getApps().find(a => a.name === 'workouts') || initializeApp(workoutProjectConfig, 'workouts');
-  workoutsDb = getFirestore(workoutsApp);
-  workoutsAuth = getAuth(workoutsApp);
-}
-
 const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('https://www.googleapis.com/auth/calendar.readonly');
 
-export { db, auth, workoutsDb, workoutsAuth, googleProvider };
+export { db, auth, googleProvider };

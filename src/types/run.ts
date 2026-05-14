@@ -36,6 +36,7 @@ export interface Run {
   };
   coachReview?: string; // Long version
   coachReviewShort?: string; // One sentence version
+  aiDescription?: string; // AI's breakdown of the run structure
 }
 
 export interface Exercise {

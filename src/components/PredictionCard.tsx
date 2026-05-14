@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { auth } from '@/lib/firebase';
-import { RefreshCw, AlertCircle, Brain } from 'lucide-react';
+import { RefreshCw, AlertCircle, Brain, ChevronDown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 interface PredictionData {
@@ -17,6 +17,7 @@ export default function PredictionCard() {
   const [prediction, setPrediction] = useState<PredictionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchPrediction = React.useCallback(async (forceRefresh = false) => {
@@ -212,22 +213,47 @@ export default function PredictionCard() {
           </div>
         </div>
 
-        <div className="mt-8 pt-6 border-t border-gray-100 flex gap-4 items-start">
+        <div 
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="mt-8 pt-6 border-t border-gray-100 flex gap-4 items-start cursor-pointer hover:bg-gray-50/50 transition-colors p-3 -m-3 rounded-xl group/insight"
+        >
           <span className="text-2xl mt-1">🧠</span>
-          <div>
-            <p className="text-[10px] font-black text-blue-600 uppercase mb-1 tracking-wider">Coach&apos;s Insight</p>
+          <div className="flex-1">
+            <div className="flex justify-between items-center mb-1">
+              <p className="text-[10px] font-black text-blue-600 uppercase tracking-wider">Coach&apos;s Insight</p>
+              <ChevronDown className={`w-4 h-4 text-gray-300 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+            </div>
             <div className="text-base font-bold text-gray-800 leading-snug">
               <ReactMarkdown
                 components={{
-                  ul: ({node, ...props}) => <ul className="list-disc ml-4 mb-2 space-y-1" {...props} />,
-                  ol: ({node, ...props}) => <ol className="list-decimal ml-4 mb-2 space-y-1" {...props} />,
-                  li: ({node, ...props}) => <li className="pl-1" {...props} />,
-                  p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                  ul: ({...props}) => <ul className="list-disc ml-4 mb-2 space-y-1" {...props} />,
+                  ol: ({...props}) => <ol className="list-decimal ml-4 mb-2 space-y-1" {...props} />,
+                  li: ({...props}) => <li className="pl-1" {...props} />,
+                  p: ({...props}) => <p className="mb-2 last:mb-0" {...props} />,
                 }}
               >
                 {prediction.coachComment}
               </ReactMarkdown>
             </div>
+            
+            {isExpanded && prediction.detailedReasoning && (
+              <div className="mt-4 pt-4 border-t border-gray-100 animate-in fade-in slide-in-from-top-2 duration-300">
+                <p className="text-[10px] font-black text-gray-400 uppercase mb-3 tracking-widest">Full Explanation</p>
+                <div className="text-sm font-medium text-gray-600 leading-relaxed prose prose-sm max-w-none">
+                  <ReactMarkdown
+                    components={{
+                      ul: ({...props}) => <ul className="list-disc ml-4 mb-2 space-y-1" {...props} />,
+                      ol: ({...props}) => <ol className="list-decimal ml-4 mb-2 space-y-1" {...props} />,
+                      li: ({...props}) => <li className="pl-1" {...props} />,
+                      p: ({...props}) => <p className="mb-3 last:mb-0" {...props} />,
+                      strong: ({...props}) => <strong className="font-bold text-gray-800" {...props} />,
+                    }}
+                  >
+                    {prediction.detailedReasoning}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

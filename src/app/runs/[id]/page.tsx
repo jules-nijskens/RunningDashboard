@@ -115,6 +115,20 @@ export default function RunDetail() {
               </div>
             )}
 
+            {run.aiDescription && (
+              <div className="mb-10">
+                <h2 className="text-lg font-bold text-gray-800 mb-3 uppercase tracking-tight flex items-center gap-2">
+                  <span className="bg-purple-600 text-white text-[10px] px-2 py-1 rounded-md">AI</span>
+                  Structural Breakdown
+                </h2>
+                <div className="bg-purple-50 p-6 rounded-2xl text-gray-800 border-l-4 border-purple-400 shadow-sm">
+                  <p className="text-lg leading-relaxed font-medium">
+                    {run.aiDescription}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {run.coachReview && (
               <div className="mb-10">
                 <h2 className="text-lg font-bold text-gray-800 mb-3 uppercase tracking-tight flex items-center gap-2">

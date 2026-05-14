@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
-import { workoutsDb } from '@/lib/firebase';
+import { auth } from '@/lib/firebase';
 import { Workout } from '@/types/run';
 
 type WorkoutLocation = 'office' | 'home';
@@ -12,34 +11,45 @@ export default function WorkoutList() {
   const [loading, setLoading] = useState(true);
   const [activeLocation, setActiveLocation] = useState<WorkoutLocation>('office');
 
-  useEffect(() => {
-    if (!workoutsDb) {
-      setLoading(false);
-      return;
-    }
-    const q = query(collection(workoutsDb, 'workouts'), orderBy('date', 'desc'));
-    
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const workoutsData: Workout[] = [];
-      querySnapshot.forEach((doc) => {
-        workoutsData.push({ id: doc.id, ...doc.data() } as Workout);
-      });
-      setWorkouts(workoutsData);
-      setLoading(false);
-    }, (error) => {
-      console.error("Error fetching workouts:", error);
-      setLoading(false);
-    });
+  const fetchWorkouts = async () => {
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) return;
 
-    return () => unsubscribe();
+      const response = await fetch('/api/workouts', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setWorkouts(data.workouts || []);
+      }
+    } catch (error) {
+      console.error("Error fetching workouts:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchWorkouts();
   }, []);
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (!workoutsDb) return;
     if (window.confirm('Are you sure you want to delete this workout?')) {
       try {
-        await deleteDoc(doc(workoutsDb, 'workouts', id));
+        const token = await auth.currentUser?.getIdToken();
+        const response = await fetch(`/api/workouts?id=${id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (response.ok) {
+          setWorkouts(workouts.filter(w => w.id !== id));
+        } else {
+          throw new Error("Failed to delete");
+        }
       } catch (error) {
         console.error("Error deleting workout:", error);
         alert("Failed to delete workout.");
@@ -49,7 +59,7 @@ export default function WorkoutList() {
 
   const formatDate = (date: any) => {
     if (!date) return 'N/A';
-    const d = date.toDate ? date.toDate() : new Date(date);
+    const d = new Date(date);
     return d.toLocaleDateString();
   };
 

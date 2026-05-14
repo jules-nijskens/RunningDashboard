@@ -195,12 +195,31 @@ export default function UploadForm() {
               const { review } = await reviewRes.json();
               newRun.coachReview = review.long;
               newRun.coachReviewShort = review.short;
+              newRun.aiDescription = review.structure;
             }
           } catch (aiError) {
             console.error("AI Review failed:", aiError);
           }
 
           await addDoc(collection(db, 'runs'), newRun);
+          
+          if (newRun.coachReview) {
+            try {
+              const runTitle = `${newRun.runType} Run - ${newRun.distance}km`;
+              const chatRef = await addDoc(collection(db, 'chats'), {
+                timestamp: Date.now(),
+                title: `Review: ${runTitle}`,
+                messages: [
+                  { role: 'user', content: `I just uploaded a new ${runTitle} completed in ${newRun.duration}. Could you analyze it?` },
+                  { role: 'model', content: newRun.coachReview }
+                ]
+              });
+              // Store the ID so the dashboard can open it automatically
+              sessionStorage.setItem('openReviewChatId', chatRef.id);
+            } catch (chatError) {
+              console.error("Failed to create chat history for run review:", chatError);
+            }
+          }
           
           setMessage({ type: 'success', text: 'Run with laps uploaded successfully!' });
           setTimeout(() => {

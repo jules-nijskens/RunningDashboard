@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { useChat } from '@/lib/ChatContext';
 
@@ -12,7 +12,7 @@ interface Message {
 }
 
 export default function GeminiCoach() {
-  const { activeChatId, activeMessages, isCoachOpen, setIsCoachOpen, resetChat } = useChat();
+  const { activeChatId, activeMessages, isCoachOpen, setIsCoachOpen, resetChat, loadChat } = useChat();
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([
     { role: 'model', content: "Hey! I'm your AI Coach. Ready to crush some goals? Ask me about your progress or how to improve." }
@@ -28,6 +28,28 @@ export default function GeminiCoach() {
       setMessages(activeMessages);
     }
   }, [activeChatId, activeMessages]);
+
+  // Check for pending review chat from upload
+  useEffect(() => {
+    const pendingChatId = sessionStorage.getItem('openReviewChatId');
+    if (pendingChatId) {
+      sessionStorage.removeItem('openReviewChatId');
+      
+      const fetchPendingChat = async () => {
+        try {
+          const snap = await getDoc(doc(db, 'chats', pendingChatId));
+          if (snap.exists()) {
+            const data = snap.data();
+            loadChat(snap.id, data.messages);
+          }
+        } catch (err) {
+          console.error("Coach: Failed to load pending review chat:", err);
+        }
+      };
+      
+      fetchPendingChat();
+    }
+  }, [loadChat]);
 
   const fetchUpcomingRuns = async () => {
     const token = sessionStorage.getItem('google_calendar_token');
