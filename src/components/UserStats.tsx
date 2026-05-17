@@ -13,6 +13,7 @@ interface PB {
 interface UserStatsData {
   goals: string[];
   status: string;
+  coachingMode: 'runna' | 'gemini';
   pbs: {
     '5k': PB;
     '10k': PB;
@@ -79,6 +80,7 @@ export default function UserStats() {
         const data: UserStatsData = {
           goals: goals.length > 0 ? goals : ['Set your next goal...'],
           status: rawData.status || 'Maintenance',
+          coachingMode: rawData.coachingMode || 'runna',
           pbs: {
             '5k': migratePB(rawData.pbs?.['5k']),
             '10k': migratePB(rawData.pbs?.['10k']),
@@ -95,6 +97,7 @@ export default function UserStats() {
         const defaults: UserStatsData = {
           goals: ['Set your next goal...'],
           status: 'Maintenance',
+          coachingMode: 'runna',
           pbs: {
             '5k': { time: '--:--', date: '' },
             '10k': { time: '--:--', date: '' },
@@ -255,6 +258,32 @@ export default function UserStats() {
                 <option>Maintenance</option>
                 <option>Injured</option>
               </select>
+
+              <div className="mt-4 pt-4 border-t border-orange-200">
+                <label className="block text-xs font-black text-indigo-800 uppercase tracking-widest mb-2">Coaching Mode</label>
+                <div className="flex p-1 bg-white/50 rounded-lg border border-orange-100 shadow-inner">
+                  <button
+                    onClick={() => setEditForm({...editForm!, coachingMode: 'runna'})}
+                    className={`flex-1 py-2 text-xs font-black uppercase tracking-widest rounded-md transition-all ${
+                      editForm?.coachingMode === 'runna' 
+                        ? 'bg-orange-600 text-white shadow-md' 
+                        : 'text-orange-400 hover:text-orange-600'
+                    }`}
+                  >
+                    Runna
+                  </button>
+                  <button
+                    onClick={() => setEditForm({...editForm!, coachingMode: 'gemini'})}
+                    className={`flex-1 py-2 text-xs font-black uppercase tracking-widest rounded-md transition-all ${
+                      editForm?.coachingMode === 'gemini' 
+                        ? 'bg-orange-600 text-white shadow-md' 
+                        : 'text-orange-400 hover:text-orange-600'
+                    }`}
+                  >
+                    Gemini AI
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="bg-purple-50 p-5 rounded-xl border border-purple-200 shadow-sm">

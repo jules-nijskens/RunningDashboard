@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { collection, query, orderBy, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, getDocs, where, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList } from 'recharts';
 import { Activity, Calendar, Trophy } from 'lucide-react';
@@ -16,6 +16,7 @@ interface WeeklyData {
 export default function WeeklyStats() {
   const [data, setData] = useState<WeeklyData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [coachingMode, setCoachingMode] = useState<'runna' | 'gemini'>('runna');
 
   // Helper to get YYYY-MM-DD in local time
   const getLocalYYYYMMDD = (date: Date) => {
@@ -24,6 +25,15 @@ export default function WeeklyStats() {
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   };
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(doc(db, 'settings', 'user_stats'), (docSnap) => {
+      if (docSnap.exists()) {
+        setCoachingMode(docSnap.data().coachingMode || 'runna');
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -58,17 +68,46 @@ export default function WeeklyStats() {
           console.error("WeeklyStats: ERROR fetching workouts via API:", workoutsErr.message);
         }
 
-        // 3. Get Planned Runs (Google Calendar)
-        const token = sessionStorage.getItem('google_calendar_token');
-        const calendarId = process.env.NEXT_PUBLIC_TRAINING_CALENDAR_ID;
-        let plannedEvents: any[] = [];
-        if (token && calendarId) {
-          const timeMin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(); // Last 30 days
-          const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?timeMin=${encodeURIComponent(timeMin)}&singleEvents=true&orderBy=startTime&maxResults=50`;
-          const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
-          if (res.ok) {
-            const json = await res.json();
-            plannedEvents = json.items || [];
+        // 4. Get Planned Runs
+        let plannedItems: { date: string, distance: number }[] = [];
+
+        if (coachingMode === 'runna') {
+          // Google Calendar
+          const token = sessionStorage.getItem('google_calendar_token');
+          const calendarId = process.env.NEXT_PUBLIC_TRAINING_CALENDAR_ID;
+          if (token && calendarId) {
+            const timeMin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+            const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?timeMin=${encodeURIComponent(timeMin)}&singleEvents=true&orderBy=startTime&maxResults=50`;
+            const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+            if (res.ok) {
+              const json = await res.json();
+              const events = json.items || [];
+              plannedItems = events.map((e: any) => {
+                const dateStr = e.start.dateTime || e.start.date;
+                const distMatch = e.summary.match(/(\d+[.,]?\d*)\s*km/i);
+                const dist = distMatch ? parseFloat(distMatch[1].replace(',', '.')) : 0;
+                return { date: dateStr, distance: dist };
+              });
+            }
+          }
+        } else {
+          // Gemini Mode
+          try {
+            const idToken = await auth.currentUser?.getIdToken();
+            if (idToken) {
+              const res = await fetch('/api/gemini-plans', {
+                headers: { 'Authorization': `Bearer ${idToken}` }
+              });
+              if (res.ok) {
+                const json = await res.json();
+                plannedItems = (json.plans || []).map((p: any) => ({
+                  date: p.date,
+                  distance: parseFloat(p.distance?.toString().replace(/[^\d.]/g, '') || '0')
+                }));
+              }
+            }
+          } catch (geminiErr) {
+            console.error("WeeklyStats: Error fetching Gemini plans", geminiErr);
           }
         }
 
@@ -78,7 +117,6 @@ export default function WeeklyStats() {
         const getMonday = (date: Date) => {
           const d = new Date(date);
           const day = d.getDay();
-          // Adjust for Sunday (0) being the end of the week in this context
           const diff = d.getDate() - (day === 0 ? 6 : day - 1);
           const monday = new Date(d.setDate(diff));
           monday.setHours(0, 0, 0, 0);
@@ -101,19 +139,12 @@ export default function WeeklyStats() {
         });
 
         // Process Planned
-        plannedEvents.forEach(e => {
-          const dateStr = e.start.dateTime || e.start.date;
-          const monday = getMonday(new Date(dateStr));
-          
-          // Try to extract distance from summary (e.g., "10.5 km")
-          const distMatch = e.summary.match(/(\d+[.,]?\d*)\s*km/i);
-          const dist = distMatch ? parseFloat(distMatch[1].replace(',', '.')) : 0;
-
+        plannedItems.forEach(item => {
+          const monday = getMonday(new Date(item.date));
           if (!weeklyMap[monday]) weeklyMap[monday] = { weekStart: monday, completedDistance: 0, plannedDistance: 0, workouts: 0 };
           
-          // Only add to planned if it's in the future (or today)
-          if (new Date(dateStr) >= new Date()) {
-            weeklyMap[monday].plannedDistance += dist;
+          if (new Date(item.date) >= new Date()) {
+            weeklyMap[monday].plannedDistance += item.distance;
           }
         });
 
@@ -165,7 +196,7 @@ export default function WeeklyStats() {
     };
 
     fetchData();
-  }, []);
+  }, [coachingMode]);
 
   if (loading) return null;
 

@@ -247,6 +247,17 @@ You are direct, motivating, and data-driven.
 You have access to the athlete's full history, including runs, gym workouts, and long-term strategy.
 Your goal is to help the athlete reach their goals (currently Sub-47:30 10K by August 1st).
 
+ATHLETE PREFERENCES & SCHEDULE:
+- WEEKLY RHYTHM: 4 runs per week, always in the morning.
+- RUN DAYS: Tuesday, Thursday, Friday, and Sunday (Long Run).
+- STRENGTH DAYS: Wednesday (at the Office) and Friday.
+- OFFICE DAYS: Monday and Wednesday (prefers no running these days).
+- RECOVERY DAYS: Monday and Saturday (no scheduled sessions).
+- PERIODIZATION PRINCIPLES:
+    1. DELOAD WEEKS: Aim for a deload week (reduced volume/intensity) approximately every 4 weeks. However, be flexible—take the athlete's schedule, holidays, and high-fatigue signals (HRV/Sleep) into account. Always propose a deload week first and explain why it's timed that way.
+    2. RACE TAPERING: Implement a taper leading up to "Race" or "Time Trial" events. Scale the taper duration and intensity based on the race distance (e.g., 1 week for a 5K/10K, 2-3 weeks for a Half or Full Marathon). Ensure the taper maintains movement quality while shedding accumulated fatigue.
+- CONSTRAINT: Always keep the plan realistic based on this 194cm athlete's status.
+
 CONTEXTUAL AWARENESS:
 - You MUST ALWAYS check the current date before giving advice. Today's Date is provided in the athlete data.
 - Review past runs (history) to see if the athlete is under or over-training. Be specific: mention the date and type of run when referencing specific activities (e.g., "Your workout last Tuesday...").
@@ -255,7 +266,8 @@ CONTEXTUAL AWARENESS:
     - Sleep (7d Avg Score): Use this to explain fatigue levels.
     - Performance Metrics (VO2 Max, Lactate Threshold): Use these to anchor your pace and fitness expectations.
 - IMPORTANT: For recent runs, pay close attention to the "aiDescription" field. This contains the AI's structural breakdown of the run (e.g., distinguishing warmup from main effort). Use this to understand the actual quality of the session rather than just the average metrics.
-- Review upcoming runs (planned schedule) to help the athlete prepare for what's next.
+- Review upcoming runs (planned schedule) to help the athlete prepare for what's next. Use this context to identify if the current pace/intensity is sustainable or if the upcoming plan needs adjustment based on recent performance.
+- IMPORTANT: You can now generate or **revise** a training plan using the "generate_training_plan" tool. If you notice the athlete is consistently over-performing, struggling with fatigue, or if their physiological metrics (HRV/Sleep) are poor, proactively suggest specific improvements to the upcoming plan and call the tool to update it after confirmation.
 
 DATA INTERPRETATION RULES:
 1. LAST LAP SENSITIVITY: If a run's final lap is very short (e.g., < 100m) and slow, assume the athlete stopped their watch late. Ignore this "tail" in your analysis.
@@ -327,6 +339,29 @@ export const coachTools: any[] = [
             }
           },
           required: ["goals"]
+        }
+      },
+      {
+        name: "generate_training_plan",
+        description: "Generates a structured training plan for the next 2 months. Use this when the athlete asks for a new plan.",
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            plan: {
+              type: SchemaType.ARRAY,
+              items: {
+                type: SchemaType.OBJECT,
+                properties: {
+                  date: { type: SchemaType.STRING, description: "Date of the workout (YYYY-MM-DD)" },
+                  runType: { type: SchemaType.STRING, description: "Type of run (e.g. Easy, Interval, Tempo, Long Run)" },
+                  distance: { type: SchemaType.STRING, description: "Distance (e.g. 5km, 10km, 1:20h)" },
+                  description: { type: SchemaType.STRING, description: "Detailed instructions for the workout." }
+                },
+                required: ["date", "runType", "distance", "description"]
+              }
+            }
+          },
+          required: ["plan"]
         }
       }
     ]

@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { collection, query, where, getDocs, doc, onSnapshot } from 'firebase/firestore';
+import { db, auth } from '@/lib/firebase';
 import ReactMarkdown from 'react-markdown';
 
 interface CalendarEvent {
@@ -13,6 +13,15 @@ interface CalendarEvent {
     date?: string;
   };
   description?: string;
+}
+
+interface WorkoutItem {
+  id: string;
+  workoutName: string;
+  distance: string;
+  runType: string;
+  description: string;
+  date: string;
 }
 
 interface WeatherData {
@@ -35,11 +44,21 @@ const getWeatherEmoji = (code: number) => {
 };
 
 export default function PlannedRuns() {
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [items, setItems] = useState<WorkoutItem[]>([]);
+  const [coachingMode, setCoachingMode] = useState<'runna' | 'gemini'>('runna');
   const [hasRunToday, setHasRunToday] = useState(false);
   const [weather, setWeather] = useState<WeatherData>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(doc(db, 'settings', 'user_stats'), (docSnap) => {
+      if (docSnap.exists()) {
+        setCoachingMode(docSnap.data().coachingMode || 'runna');
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     const checkTodayRun = async () => {
@@ -65,43 +84,80 @@ export default function PlannedRuns() {
 
   useEffect(() => {
     const fetchPlannedRunsAndWeather = async () => {
-      const token = sessionStorage.getItem('google_calendar_token');
-      const calendarId = process.env.NEXT_PUBLIC_TRAINING_CALENDAR_ID;
-
-      if (!token) {
-        setError('No calendar access token found. Please sign in again.');
-        setLoading(false);
-        return;
-      }
-
-      if (!calendarId) {
-        setError('Training Calendar ID not configured.');
-        setLoading(false);
-        return;
-      }
+      setLoading(true);
+      setError(null);
 
       try {
-        const timeMin = new Date().toISOString();
-        const calendarUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?timeMin=${encodeURIComponent(timeMin)}&singleEvents=true&orderBy=startTime&maxResults=10`;
-        
-        const response = await fetch(calendarUrl, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
+        let fetchedItems: WorkoutItem[] = [];
 
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          if (response.status === 401) throw new Error('Calendar session expired.');
-          throw new Error(`Calendar API error: ${errorData.error?.message || 'Failed to fetch'}`);
+        if (coachingMode === 'runna') {
+          const token = sessionStorage.getItem('google_calendar_token');
+          const calendarId = process.env.NEXT_PUBLIC_TRAINING_CALENDAR_ID;
+
+          if (!token) {
+            setError('No calendar access token found. Please sign in again.');
+            setLoading(false);
+            return;
+          }
+
+          if (!calendarId) {
+            setError('Training Calendar ID not configured.');
+            setLoading(false);
+            return;
+          }
+
+          const timeMin = new Date().toISOString();
+          const calendarUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?timeMin=${encodeURIComponent(timeMin)}&singleEvents=true&orderBy=startTime&maxResults=10`;
+          
+          const response = await fetch(calendarUrl, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            if (response.status === 401) throw new Error('Calendar session expired.');
+            throw new Error(`Calendar API error: ${errorData.error?.message || 'Failed to fetch'}`);
+          }
+
+          const data = await response.json();
+          const events: CalendarEvent[] = data.items || [];
+          fetchedItems = events.map(event => {
+            const { workoutName, distance, runType, description } = parseRunnaEvent(event);
+            return {
+              id: event.id,
+              workoutName,
+              distance,
+              runType,
+              description,
+              date: event.start.dateTime || event.start.date || ''
+            };
+          });
+        } else {
+          // Gemini Mode
+          const token = await auth.currentUser?.getIdToken();
+          const response = await fetch('/api/gemini-plans', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+
+          if (!response.ok) throw new Error('Failed to fetch Gemini plans');
+          
+          const data = await response.json();
+          fetchedItems = (data.plans || []).map((p: any) => ({
+            id: p.id,
+            workoutName: p.runType, // Using runType as workout name for Gemini plans
+            distance: p.distance,
+            runType: p.runType,
+            description: p.description,
+            date: p.date
+          }));
         }
 
-        const data = await response.json();
-        const items: CalendarEvent[] = data.items || [];
-        setEvents(items);
+        setItems(fetchedItems);
 
         // Fetch Weather for these dates (Oranienburg: 52.75, 13.24)
-        if (items.length > 0) {
+        if (fetchedItems.length > 0) {
           // Extend to 14 days forecast
           const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=52.75&longitude=13.24&hourly=temperature_2m,weathercode,wind_speed_10m&timezone=auto&forecast_days=14`;
           const weatherRes = await fetch(weatherUrl);
@@ -133,7 +189,7 @@ export default function PlannedRuns() {
     };
 
     fetchPlannedRunsAndWeather();
-  }, []);
+  }, [coachingMode]);
 
   const parseRunnaEvent = (event: CalendarEvent) => {
     const summary = event.summary.replace(/🏃/g, '').trim();
@@ -231,16 +287,24 @@ export default function PlannedRuns() {
   return (
     <div className="mt-12 space-y-4">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-800">Planned Runs (Runna)</h2>
+        <h2 className="text-2xl font-bold text-gray-800">
+          Planned Runs ({coachingMode === 'runna' ? 'Runna' : 'Gemini AI'})
+        </h2>
         <div className="flex items-center gap-3">
           <span className="text-[10px] text-gray-600 font-bold uppercase tracking-widest">Oranienburg 08:00</span>
-          <span className="text-xs text-blue-600 font-black uppercase tracking-widest bg-blue-50 px-3 py-1 rounded-full border border-blue-100">Upcoming Schedule</span>
+          <span className="text-xs text-blue-600 font-black uppercase tracking-widest bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
+            {coachingMode === 'runna' ? 'Calendar Sync' : 'AI Generation'}
+          </span>
         </div>
       </div>
 
-      {events.length === 0 ? (
+      {items.length === 0 ? (
         <div className="bg-white p-8 rounded-xl shadow-md border border-gray-100 text-center">
-          <p className="text-gray-700 font-medium italic">No upcoming runs found in your Runna calendar.</p>
+          <p className="text-gray-700 font-medium italic">
+            {coachingMode === 'runna' 
+              ? 'No upcoming runs found in your Runna calendar.'
+              : 'No Gemini training plan found. Ask the coach to generate one!'}
+          </p>
         </div>
       ) : (
         <div className="bg-white shadow-md rounded-xl border border-gray-100 overflow-visible">
@@ -256,9 +320,8 @@ export default function PlannedRuns() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {events.map((event) => {
-                const startDateStr = event.start.dateTime || event.start.date || '';
-                const dateObj = startDateStr ? new Date(startDateStr) : null;
+              {items.map((item) => {
+                const dateObj = item.date ? new Date(item.date) : null;
                 
                 // Skip if it's today and we already ran
                 const isToday = dateObj && dateObj.toDateString() === new Date().toDateString();
@@ -273,12 +336,12 @@ export default function PlannedRuns() {
                   dateKey = `${year}-${month}-${day}`;
                 }
                 
-                const { workoutName, distance, runType, description } = parseRunnaEvent(event);
+                const { workoutName, distance, runType, description } = item;
                 const dayWeather = weather[dateKey];
                 const isWindy = dayWeather && dayWeather.windSpeed > 20;
                 
                 return (
-                  <tr key={event.id} className="hover:bg-blue-50/30 transition-colors group">
+                  <tr key={item.id} className="hover:bg-blue-50/30 transition-colors group">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">
                       {dateObj ? dateObj.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' }).replace(',', '') : 'TBD'}
                     </td>

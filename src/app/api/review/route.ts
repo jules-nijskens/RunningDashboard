@@ -135,11 +135,36 @@ export async function POST(request: Request) {
       }
     }
 
+    // 3.5. Fetch Upcoming Runs based on mode
+    let upcomingRuns = runData.upcomingRuns || [];
+    const coachingMode = userStats.coachingMode || 'runna';
+    
+    if (coachingMode === 'gemini') {
+      try {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const plansSnap = await adminDb.collection('gemini_plans')
+          .where('date', '>=', todayStr)
+          .orderBy('date', 'asc')
+          .limit(3)
+          .get();
+        
+        upcomingRuns = plansSnap.docs.map(doc => {
+          const d = doc.data();
+          return {
+            summary: `${d.runType} • ${d.distance}`,
+            start: { date: d.date }
+          };
+        });
+      } catch (err) {
+        console.warn("Review: Could not fetch gemini_plans for context", err);
+      }
+    }
+
     // 4. Generate Review
     const review = await generateRunReview(runData, currentReport, {
       recentRuns,
       recentWorkouts,
-      upcomingRuns: runData.upcomingRuns,
+      upcomingRuns,
       userStats
     });
 

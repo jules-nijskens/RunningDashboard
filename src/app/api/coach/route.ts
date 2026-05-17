@@ -12,16 +12,47 @@ async function getAthleteData(context?: { upcomingRuns?: any[], today?: string }
     prediction: {},
     recentRuns: [],
     recentWorkouts: [],
-    upcomingRuns: context?.upcomingRuns || [],
+    upcomingRuns: [], // Will be populated below
     today: context?.today || new Date().toISOString()
   };
 
-  // Fetch user stats
+  // 1. Fetch user stats (includes coachingMode)
   try {
     const statsSnap = await adminDb.doc('settings/user_stats').get();
-    if (statsSnap.exists) data.stats = statsSnap.data();
+    if (statsSnap.exists) {
+      data.stats = statsSnap.data();
+    }
   } catch (err) {
     console.warn("Coach: Could not fetch user_stats");
+  }
+
+  const coachingMode = data.stats.coachingMode || 'runna';
+
+  // 2. Populate Upcoming Runs based on mode
+  if (coachingMode === 'runna') {
+    data.upcomingRuns = context?.upcomingRuns || [];
+  } else {
+    try {
+      // Fetch from gemini_plans for Gemini mode
+      const todayStr = (context?.today || new Date().toISOString()).split('T')[0];
+      const plansSnap = await adminDb.collection('gemini_plans')
+        .where('date', '>=', todayStr)
+        .orderBy('date', 'asc')
+        .limit(10)
+        .get();
+      
+      data.upcomingRuns = plansSnap.docs.map(doc => {
+        const d = doc.data();
+        return {
+          id: doc.id,
+          summary: `${d.runType} • ${d.distance}`,
+          description: d.description,
+          start: { date: d.date }
+        };
+      });
+    } catch (err) {
+      console.warn("Coach: Could not fetch gemini_plans", err);
+    }
   }
 
   // Fetch training report
@@ -128,6 +159,29 @@ export async function POST(request: Request) {
         await adminDb.doc('settings/user_stats').set({ goals }, { merge: true });
         toolResponse = { status: 'Goals updated successfully.' };
         needsPredictionUpdate = true;
+      } else if (call.name === 'generate_training_plan') {
+        const { plan } = call.args as any;
+        
+        // Batch write to gemini_plans
+        const batch = adminDb.batch();
+        const plansCol = adminDb.collection('gemini_plans');
+        
+        // 1. Delete future plans to avoid overlaps
+        const todayStr = new Date().toISOString().split('T')[0];
+        const futurePlans = await plansCol.where('date', '>=', todayStr).get();
+        futurePlans.docs.forEach(doc => batch.delete(doc.ref));
+        
+        // 2. Add new plans
+        plan.forEach((workout: any) => {
+          const docRef = plansCol.doc();
+          batch.set(docRef, {
+            ...workout,
+            createdAt: new Date().toISOString()
+          });
+        });
+        
+        await batch.commit();
+        toolResponse = { status: `Training plan with ${plan.length} workouts generated and saved successfully.` };
       }
 
       result = await chat.sendMessage([{
