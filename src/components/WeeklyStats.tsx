@@ -151,7 +151,7 @@ export default function WeeklyStats() {
         // Convert to array and sort
         const sortedData = Object.values(weeklyMap).sort((a, b) => a.weekStart.localeCompare(b.weekStart));
         
-        // Window Logic: Exactly 8 weeks history + 4 weeks outlook (including current)
+        // Window Logic: Exactly 8 weeks history + 8 weeks outlook (including current)
         const today = new Date();
         const currentMondayStr = getMonday(today);
         
@@ -160,15 +160,15 @@ export default function WeeklyStats() {
         const eightWeeksAgo = new Date(currentMonday);
         eightWeeksAgo.setDate(eightWeeksAgo.getDate() - (7 * 8));
         
-        // Calculate 3 weeks forward (for a total of 4 weeks including current)
-        const threeWeeksForward = new Date(currentMonday);
-        threeWeeksForward.setDate(threeWeeksForward.getDate() + (7 * 3));
+        // Calculate 7 weeks forward (for a total of 8 weeks including current)
+        const sevenWeeksForward = new Date(currentMonday);
+        sevenWeeksForward.setDate(sevenWeeksForward.getDate() + (7 * 7));
         
         // Filter and ensure we have all weeks in the range (even if empty)
         const finalData: (WeeklyData & { labelHeight: number })[] = [];
         let iterDate = new Date(eightWeeksAgo);
         
-        while (iterDate <= threeWeeksForward) {
+        while (iterDate <= sevenWeeksForward) {
           const iterStr = getLocalYYYYMMDD(iterDate);
           const existing = sortedData.find(d => d.weekStart === iterStr);
           
@@ -217,7 +217,7 @@ export default function WeeklyStats() {
             <Activity className="text-blue-600 w-5 h-5" />
             Training Volume & Outlook
           </h2>
-          <p className="text-gray-500 font-bold text-[10px] uppercase tracking-[0.2em] mt-0.5">8 Weeks History + 4 Weeks Forecast</p>
+          <p className="text-gray-500 font-bold text-[10px] uppercase tracking-[0.2em] mt-0.5">8 Weeks History + 8 Weeks Forecast</p>
         </div>
         <div className="flex gap-3">
           <div className="flex items-center gap-1.5">
