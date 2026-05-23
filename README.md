@@ -1,37 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# RunningDashboard 🏃‍♂️🧠
+
+RunningDashboard is an AI-powered performance analysis tool designed for endurance athletes. It transforms raw Garmin data into actionable coaching insights using Google's Gemini Pro API, helping athletes optimize their training, monitor physiological readiness, and predict race performance.
+
+## Key Features
+
+### 🧠 AI Running Coach (Gemini Pro)
+- **Automated Run Reviews:** Every uploaded run is analyzed by an "AI Coach" that provides punchy, specific feedback on pace, heart rate, and training structure.
+- **Context-Aware Insights:** The coach considers 7-day physiological trends (HRV, Sleep, RHR) and upcoming planned workouts to provide holistic advice.
+- **Interactive Chat:** Ask the coach specific questions about your training plan, fatigue levels, or upcoming race strategy.
+
+### 📊 Performance Analytics & Predictions
+- **Race Predictor:** Estimates current 10K fitness based on volume, consistency, and specific intensity sessions.
+- **Physiological Monitoring:** Tracks VO2 Max, Lactate Threshold, and Heart Rate Variability (HRV) trends.
+- **Weekly Strategy Reports:** Generates a 4-pillar report covering training phases, fitness status, biomechanics trends, and short-term strategy.
+
+### 📅 Training Management
+- **Integrated Calendar:** Syncs with Google Calendar to track upcoming planned runs.
+- **Gym Workout Logging:** Tracks strength training sessions to ensure a balanced approach to endurance and power.
+- **Automated Periodization:** Proposes deload weeks and race tapers based on accumulated fatigue and performance signals.
+
+## Screenshots
+
+<div align="center">
+  <img src="Screenshot 2026-04-30 at 17.35.36.png" width="45%" alt="Dashboard Overview" />
+  <img src="Screenshot 2026-04-30 at 18.16.50.png" width="45%" alt="Performance Analytics" />
+</div>
+
+<div align="center">
+  <img src="Screenshot 2026-05-11 at 18.55.45.png" width="45%" alt="AI Coach Interaction" />
+  <img src="Screenshot 2026-05-14 at 13.49.03.png" width="45%" alt="Run Analysis" />
+</div>
+
+## Technical Stack
+
+- **Framework:** [Next.js](https://nextjs.org/) (React, TypeScript)
+- **Backend/DB:** [Firebase](https://firebase.google.com/) (Firestore, Authentication, Hosting)
+- **AI Engine:** [Google Gemini Pro API](https://ai.google.dev/)
+- **Styling:** Vanilla CSS / Tailwind CSS
+- **Integration:** Google Calendar API
+
+## Security & Privacy Note
+
+This is a personal tool built specifically for the owner's training data.
+- **Access Control:** The application uses Firebase Authentication and is restricted via an `AuthGuard` to a specific authorized user.
+- **Data Protection:** No sensitive API keys or credentials are stored in the codebase; all configuration is managed through secure environment variables.
+- **Firestore Security:** Rules are configured to restrict read/write access to authenticated authorized sessions only.
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+- Node.js 18+
+- Firebase Project
+- Google Gemini API Key
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+### Installation
+1. Clone the repository
+2. Install dependencies: `npm install`
+3. Create a `.env.local` file with your credentials (see `apphosting.yaml` for required variables)
+4. Run the development server: `npm run dev`
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-# RunningDashboard
+---
+*Built for athletes who want more than just numbers.*
