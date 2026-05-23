@@ -22,13 +22,13 @@ RunningDashboard is an AI-powered performance analysis tool designed for enduran
 ## Screenshots
 
 <div align="center">
-  <img src="Screenshot 2026-04-30 at 17.35.36.png" width="45%" alt="Dashboard Overview" />
-  <img src="Screenshot 2026-04-30 at 18.16.50.png" width="45%" alt="Performance Analytics" />
+  <img src="Screenshots/Overview.png" width="45%" alt="Dashboard Overview" />
+  <img src="Screenshots/Screenshot 2026-05-23 at 16.08.05.png" width="45%" alt="Performance Analytics" />
 </div>
 
 <div align="center">
-  <img src="Screenshot 2026-05-11 at 18.55.45.png" width="45%" alt="AI Coach Interaction" />
-  <img src="Screenshot 2026-05-14 at 13.49.03.png" width="45%" alt="Run Analysis" />
+  <img src="Screenshots/Screenshot 2026-05-23 at 16.08.25.png" width="45%" alt="AI Coach Interaction" />
+  <img src="Screenshots/Screenshot 2026-05-23 at 16.09.05.png" width="45%" alt="Run Analysis" />
 </div>
 
 ## Technical Stack
