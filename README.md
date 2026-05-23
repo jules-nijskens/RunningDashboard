@@ -6,27 +6,33 @@ RunningDashboard is an AI-powered performance analysis tool designed for enduran
 
 ## Key Features
 
-### 🧠 AI Running Coach (Gemini Pro)
-<img src="Screenshots/Coach.png" width="90%" alt="AI Coach Interaction" />
+### 🧠 AI Training Strategy & Planning
+<img src="Screenshots/AI Training Plan.png" width="90%" alt="AI Training Plan" />
 
-- **Automated Run Reviews:** Every uploaded run is analyzed by an "AI Coach" that provides punchy, specific feedback on pace, heart rate, and training structure.
-<img src="Screenshots/Analysis.png" width="90%" alt="Run Analysis" />
-- **Context-Aware Insights:** The coach considers 7-day physiological trends (HRV, Sleep, RHR) and upcoming planned workouts to provide holistic advice.
-- **Interactive Chat:** Ask the coach specific questions about your training plan, fatigue levels, or upcoming race strategy.
+- **Automated Periodization:** The AI Coach generates structured 2-month training plans, incorporating deload weeks and race tapers based on your specific goals.
+- **Interactive Coaching:** Chat with "The Coach" to revise your plan, ask about specific sessions, or adjust intensity based on how you feel.
+- **Goal-Oriented Guidance:** Specifically tuned for marathon and 10K targets, focusing on the athlete's unique physiological profile.
+
+### 📤 Seamless Data Integration & Analysis
+<img src="Screenshots/Upload.png" width="90%" alt="Upload Run" />
+
+- **Automated Run Reviews:** Upload your Garmin CSV data for immediate, punchy feedback on every session.
+- **Structure Identification:** The AI distinguishes between warmups, main efforts, and cooldowns to judge the true quality of a workout.
+- **Feedback Loop:** Every review is tailored to the athlete's history, ensuring advice is always contextual.
+
+### 📈 Context-Aware Physiological Insights
+<img src="Screenshots/User Stats.png" width="90%" alt="User Physiological Stats" />
+
+- **Holistic Readiness:** Integrates 7-day trends for Heart Rate Variability (HRV), Resting Heart Rate (RHR), and Sleep scores.
+- **Biological Context:** The coach uses these "readiness" signals to explain performance variations and suggest recovery when metrics trend poorly.
+- **Performance Tracking:** Real-time visibility into VO2 Max and Lactate Threshold progress.
 
 ### 📊 Performance Analytics & Predictions
-<img src="Screenshots/Analytics.png" width="90%" alt="Performance Analytics" />
+<img src="Screenshots/Race Predictor and Past Runs.png" width="90%" alt="Race Predictor and Past Runs" />
 
-- **Race Predictor:** Estimates current 10K fitness based on volume, consistency, and specific intensity sessions.
-- **Physiological Monitoring:** Tracks VO2 Max, Lactate Threshold, and Heart Rate Variability (HRV) trends.
-- **Weekly Strategy Reports:** Generates a 4-pillar report covering training phases, fitness status, biomechanics trends, and short-term strategy.
-
-### 📅 Training Management
-<img src="Screenshots/Calendar.png" width="90%" alt="Training Calendar" />
-
-- **Integrated Calendar:** Syncs with Google Calendar to track upcoming planned runs.
-- **Gym Workout Logging:** Tracks strength training sessions to ensure a balanced approach to endurance and power.
-- **Automated Periodization:** Proposes deload weeks and race tapers based on accumulated fatigue and performance signals.
+- **Race Predictor:** Estimates current 10K fitness by analyzing volume, consistency, and intensity sessions from the last 20 runs.
+- **Trend Analysis:** Visualizes training load and pace improvements over time.
+- **Historical Context:** Easy access to past run data to compare similar sessions and track long-term growth.
 
 ## Technical Stack
 
@@ -41,7 +47,7 @@ RunningDashboard is an AI-powered performance analysis tool designed for enduran
 This is a personal tool built specifically for the owner's training data.
 - **Access Control:** The application uses Firebase Authentication and is restricted via an `AuthGuard` to a specific authorized user.
 - **Data Protection:** No sensitive API keys or credentials are stored in the codebase; all configuration is managed through secure environment variables.
-- **Firestore Security:** Rules are configured to restrict read/write access to authenticated authorized sessions only.
+- **Firestore Security:** Rules are configured to restrict read/write access to the specific authorized owner only.
 
 ## Getting Started
 
@@ -53,7 +59,7 @@ This is a personal tool built specifically for the owner's training data.
 ### Installation
 1. Clone the repository
 2. Install dependencies: `npm install`
-3. Create a `.env.local` file with your credentials (see `apphosting.yaml` for required variables)
+3. Create a `.env.local` file with your credentials
 4. Run the development server: `npm run dev`
 
 ---
