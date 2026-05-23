@@ -2,34 +2,31 @@
 
 RunningDashboard is an AI-powered performance analysis tool designed for endurance athletes. It transforms raw Garmin data into actionable coaching insights using Google's Gemini Pro API, helping athletes optimize their training, monitor physiological readiness, and predict race performance.
 
+<img src="Screenshots/Overview.png" width="100%" alt="Dashboard Overview" />
+
 ## Key Features
 
 ### 🧠 AI Running Coach (Gemini Pro)
+<img src="Screenshots/Coach.png" width="90%" alt="AI Coach Interaction" />
+
 - **Automated Run Reviews:** Every uploaded run is analyzed by an "AI Coach" that provides punchy, specific feedback on pace, heart rate, and training structure.
+<img src="Screenshots/Analysis.png" width="90%" alt="Run Analysis" />
 - **Context-Aware Insights:** The coach considers 7-day physiological trends (HRV, Sleep, RHR) and upcoming planned workouts to provide holistic advice.
 - **Interactive Chat:** Ask the coach specific questions about your training plan, fatigue levels, or upcoming race strategy.
 
 ### 📊 Performance Analytics & Predictions
+<img src="Screenshots/Analytics.png" width="90%" alt="Performance Analytics" />
+
 - **Race Predictor:** Estimates current 10K fitness based on volume, consistency, and specific intensity sessions.
 - **Physiological Monitoring:** Tracks VO2 Max, Lactate Threshold, and Heart Rate Variability (HRV) trends.
 - **Weekly Strategy Reports:** Generates a 4-pillar report covering training phases, fitness status, biomechanics trends, and short-term strategy.
 
 ### 📅 Training Management
+<img src="Screenshots/Calendar.png" width="90%" alt="Training Calendar" />
+
 - **Integrated Calendar:** Syncs with Google Calendar to track upcoming planned runs.
 - **Gym Workout Logging:** Tracks strength training sessions to ensure a balanced approach to endurance and power.
 - **Automated Periodization:** Proposes deload weeks and race tapers based on accumulated fatigue and performance signals.
-
-## Screenshots
-
-<div align="center">
-  <img src="Screenshots/Overview.png" width="45%" alt="Dashboard Overview" />
-  <img src="Screenshots/Analytics.png" width="45%" alt="Performance Analytics" />
-</div>
-
-<div align="center">
-  <img src="Screenshots/Coach.png" width="45%" alt="AI Coach Interaction" />
-  <img src="Screenshots/Analysis.png" width="45%" alt="Run Analysis" />
-</div>
 
 ## Technical Stack
 
