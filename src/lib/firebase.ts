@@ -17,6 +17,6 @@ const db = getFirestore(app);
 const auth = getAuth(app);
 
 const googleProvider = new GoogleAuthProvider();
-googleProvider.addScope('https://www.googleapis.com/auth/calendar.readonly');
+googleProvider.addScope('https://www.googleapis.com/auth/calendar.events');
 
 export { db, auth, googleProvider };

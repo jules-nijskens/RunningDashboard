@@ -19,7 +19,7 @@ export async function generateRunReview(
   const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
   const lapsString = runData.laps?.map(l => 
-    `Lap ${l.lapNumber}: ${l.distance}km in ${l.time} (Pace: ${l.avgPace}, HR: ${l.avgHR})`
+    `Lap ${l.lapNumber}: ${l.distance}km in ${l.time} (Pace: ${l.avgPace}, HR: ${l.avgHR}, Cadence: ${l.avgCadence})`
   ).join('\n') || "No lap data.";
 
   const recentRunsContext = context?.recentRuns.map(r => 
@@ -72,7 +72,7 @@ export async function generateRunReview(
 
     DATA INTERPRETATION RULES:
     1. LAST LAP SENSITIVITY: If the final lap is very short (e.g., < 100m) and slow, assume the athlete forgot to stop their watch immediately. Mention the main run stats but ignore the "tail" in your performance analysis.
-    2. CADENCE ANALYSIS: Do not rely solely on the "Average Cadence" metric if the laps show segments with very low cadence or walking. Look at the cadence for the *running* laps to determine the athlete's true form.
+    2. CADENCE ANALYSIS: If a training session includes walking segments (detected by very low pace or laps with cadence < 120), you MUST IGNORE the "Average Cadence" metric for the entire session and the cadence of those walking segments. Only look at the cadence of the actual running laps to determine form. If you cannot isolate the running cadence, do not mention cadence at all.
     
     TASK:
     1. Analyze the "Laps" to identify the structure (e.g., which laps were warm-up/cool-down vs. the main effort).
@@ -124,10 +124,13 @@ export async function updateTrainingReport(currentReport: string, runData: Run, 
     4. Short-Term Strategy (Next 2-3 Weeks)
 
     NEW DATA TO INTEGRATE:
-    Run on ${runData.date}: ${runData.distance}km, ${runData.averagePace}/km, ${runData.averageHeartRate || 'N/A'}bpm.
+    Run on ${runData.date}: ${runData.distance}km, ${runData.averagePace}/km, ${runData.averageHeartRate || 'N/A'}bpm, ${runData.averageCadence || 'N/A'}spm.
     Athlete Notes: ${runData.summary || "None"}
     Current Physiological Metrics: ${healthPerformanceContext}
     Current Training Focus Status: ${userStats.status || "N/A"}
+
+    DATA INTERPRETATION RULES:
+    1. CADENCE ANALYSIS: If this run included walking segments or if the average cadence is misleadingly low due to breaks, you MUST IGNORE the cadence for this session when updating "Biomechanics & Form Trends". Only use cadence data that you are certain represents active running.
 
     TASK:
     1. Update the existing report content based on this new run AND the current physiological metrics.
@@ -175,7 +178,7 @@ export async function generatePrediction(
   const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
   const runsContext = recentRuns.length > 0 
-    ? recentRuns.map(r => `- ${r.date}: ${r.runType}, ${r.distance}km, Avg Pace: ${r.averagePace}, HR: ${r.averageHeartRate || 'N/A'}${r.aiDescription ? `\n  Structure: ${r.aiDescription}` : ''}`).join('\n')
+    ? recentRuns.map(r => `- ${r.date}: ${r.runType}, ${r.distance}km, Avg Pace: ${r.averagePace}, HR: ${r.averageHeartRate || 'N/A'}, Cadence: ${r.averageCadence || 'N/A'}${r.aiDescription ? `\n  Structure: ${r.aiDescription}` : ''}`).join('\n')
     : "No recent runs available.";
 
   console.log(`Gemini: Generating prediction. Runs context length: ${runsContext.length} chars.`);
@@ -199,6 +202,9 @@ export async function generatePrediction(
     ${runsContext}
     
     IMPORTANT: Pay close attention to the "Structure" (aiDescription) for each run. This describes the actual breakdown (e.g., distinguishing warmup from main effort). Use the pace and intensity of the *main effort* described in the structure to anchor your fitness estimate, rather than just the average pace of the entire activity.
+
+    DATA INTERPRETATION RULES:
+    1. CADENCE ANALYSIS: If a run structure indicates walking or if the average cadence is significantly lower than the athlete's typical running cadence (due to walking), you MUST IGNORE the "Cadence" metric for that run. Only consider cadence if it reflects active running.
     
     TASK:
     1. Estimate current 10K race time based on all available data (volume, consistency, and specific intensity sessions).
@@ -249,6 +255,7 @@ Your goal is to help the athlete reach their goals (currently Sub-47:30 10K by A
 
 ATHLETE PREFERENCES & SCHEDULE:
 - WEEKLY RHYTHM: 4 runs per week, always in the morning.
+- START TIMES: Weekdays at 07:15, Weekends at 09:00.
 - RUN DAYS: Tuesday, Thursday, Friday, and Sunday (Long Run).
 - STRENGTH DAYS: Wednesday (at the Office) and Friday.
 - OFFICE DAYS: Monday and Wednesday (prefers no running these days).
@@ -271,7 +278,7 @@ CONTEXTUAL AWARENESS:
 
 DATA INTERPRETATION RULES:
 1. LAST LAP SENSITIVITY: If a run's final lap is very short (e.g., < 100m) and slow, assume the athlete stopped their watch late. Ignore this "tail" in your analysis.
-2. CADENCE ANALYSIS: Do not rely solely on "Average Cadence" if a run included walking or significant breaks. Base your form analysis on the cadence during the active running segments/laps.
+2. CADENCE ANALYSIS: If a training session includes walking segments (detected by very low pace or laps with cadence < 120), you MUST IGNORE the "Average Cadence" metric for the entire session and the cadence of those walking segments. Only consider the cadence of the active running segments/laps for form analysis. If walking was a significant part of the training, avoid commenting on cadence unless you can isolate the running-only data.
 
 TRAINING STATUS & STRATEGY:
 - There is a high-level "Training Status" badge on the dashboard. Valid values are: "Productive", "Peaking", "Maintenance", "Recovery", "Overreaching", "Detraining".
@@ -353,11 +360,12 @@ export const coachTools: any[] = [
                 type: SchemaType.OBJECT,
                 properties: {
                   date: { type: SchemaType.STRING, description: "Date of the workout (YYYY-MM-DD)" },
+                  startTime: { type: SchemaType.STRING, description: "Start time of the workout (HH:MM)" },
                   runType: { type: SchemaType.STRING, description: "Type of run (e.g. Easy, Interval, Tempo, Long Run)" },
                   distance: { type: SchemaType.STRING, description: "Distance (e.g. 5km, 10km, 1:20h)" },
                   description: { type: SchemaType.STRING, description: "Detailed instructions for the workout." }
                 },
-                required: ["date", "runType", "distance", "description"]
+                required: ["date", "startTime", "runType", "distance", "description"]
               }
             }
           },

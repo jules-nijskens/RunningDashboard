@@ -22,6 +22,7 @@ interface WorkoutItem {
   runType: string;
   description: string;
   date: string;
+  startTime?: string;
 }
 
 interface WeatherData {
@@ -50,6 +51,8 @@ export default function PlannedRuns() {
   const [weather, setWeather] = useState<WeatherData>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(doc(db, 'settings', 'user_stats'), (docSnap) => {
@@ -59,6 +62,110 @@ export default function PlannedRuns() {
     });
     return () => unsubscribe();
   }, []);
+
+  const handleSyncCalendar = async () => {
+    const token = sessionStorage.getItem('google_calendar_token');
+    const calendarId = process.env.NEXT_PUBLIC_TRAINING_CALENDAR_ID;
+
+    if (!token || !calendarId) {
+      setSyncStatus({ type: 'error', text: 'Auth token or Calendar ID missing. Try signing in again.' });
+      return;
+    }
+
+    setIsSyncing(true);
+    setSyncStatus(null);
+
+    try {
+      // 1. Clear existing Gemini-generated events (from start of today)
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+      
+      // BROAD SEARCH: Get all events from today onwards to ensure we find everything
+      const listUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?timeMin=${encodeURIComponent(startOfToday.toISOString())}&singleEvents=true&maxResults=250`;
+      
+      console.log("Sync: Fetching events to clear...", listUrl);
+      const listRes = await fetch(listUrl, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      if (listRes.ok) {
+        const listData = await listRes.json();
+        const events = listData.items || [];
+        console.log(`Sync: Found ${events.length} total upcoming events.`);
+        
+        // FILTER: Catch anything that looks like a training run we created
+        const toDelete = events.filter((event: any) => {
+          const summary = event.summary || '';
+          const isGemini = event.extendedProperties?.private?.source === 'gemini';
+          // Check for the runner emoji or typical Runna/Gemini patterns in summary
+          const isRunEvent = summary.includes('🏃') || summary.includes('•');
+          
+          return isGemini || isRunEvent;
+        });
+
+        console.log(`Sync: Identified ${toDelete.length} events for deletion.`);
+
+        if (toDelete.length > 0) {
+          // Delete sequentially to be safe and avoid rate limits/race conditions
+          for (const event of toDelete) {
+            console.log(`Sync: Deleting event "${event.summary}" (${event.id})`);
+            await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${event.id}`, {
+              method: 'DELETE',
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+          }
+          console.log("Sync: Deletion phase complete.");
+        }
+      } else {
+        const errorText = await listRes.text();
+        console.error("Sync: Failed to list events", errorText);
+      }
+
+      // 2. Push new plan
+      let successCount = 0;
+      for (const item of items) {
+        const dateStr = item.date; // Expecting YYYY-MM-DD
+        const timeStr = item.startTime || '07:15';
+        
+        // Create local date string then convert to ISO for Google API
+        const startDateTime = new Date(`${dateStr}T${timeStr}:00`);
+        // Duration estimate for calendar (default 1 hour)
+        const endDateTime = new Date(startDateTime.getTime() + 60 * 60 * 1000);
+
+        const event = {
+          summary: `🏃 ${item.workoutName}${item.distance !== '-' ? ` • ${item.distance}` : ''}`,
+          description: item.description,
+          start: { dateTime: startDateTime.toISOString() },
+          end: { dateTime: endDateTime.toISOString() },
+          extendedProperties: {
+            private: { source: 'gemini' }
+          }
+        };
+
+        const pushRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`, {
+          method: 'POST',
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(event)
+        });
+
+        if (pushRes.ok) successCount++;
+      }
+
+      setSyncStatus({ 
+        type: 'success', 
+        text: `Successfully synced ${successCount} workouts to your calendar!` 
+      });
+    } catch (err) {
+      console.error("Sync Error:", err);
+      setSyncStatus({ type: 'error', text: 'Failed to sync with Google Calendar.' });
+    } finally {
+      setIsSyncing(false);
+      setTimeout(() => setSyncStatus(null), 5000);
+    }
+  };
 
   useEffect(() => {
     const checkTodayRun = async () => {
@@ -150,7 +257,8 @@ export default function PlannedRuns() {
             distance: p.distance,
             runType: p.runType,
             description: p.description,
-            date: p.date
+            date: p.date,
+            startTime: p.startTime
           }));
         }
 
@@ -292,11 +400,48 @@ export default function PlannedRuns() {
         </h2>
         <div className="flex items-center gap-3">
           <span className="text-[10px] text-gray-600 font-bold uppercase tracking-widest">Oranienburg 08:00</span>
+          
+          {coachingMode === 'gemini' && items.length > 0 && (
+            <button
+              onClick={handleSyncCalendar}
+              disabled={isSyncing}
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
+                isSyncing 
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                  : 'bg-white text-blue-600 border-2 border-blue-600 hover:bg-blue-600 hover:text-white shadow-sm'
+              }`}
+            >
+              {isSyncing ? (
+                <>
+                  <div className="animate-spin h-2 w-2 border-b-2 border-current rounded-full"></div>
+                  Syncing...
+                </>
+              ) : (
+                <>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Sync to Calendar
+                </>
+              )}
+            </button>
+          )}
+
           <span className="text-xs text-blue-600 font-black uppercase tracking-widest bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
             {coachingMode === 'runna' ? 'Calendar Sync' : 'AI Generation'}
           </span>
         </div>
       </div>
+
+      {syncStatus && (
+        <div className={`p-3 rounded-xl text-center text-[11px] font-black uppercase tracking-widest animate-in fade-in slide-in-from-top-2 duration-300 ${
+          syncStatus.type === 'success' 
+            ? 'bg-green-50 text-green-700 border border-green-100' 
+            : 'bg-red-50 text-red-700 border border-red-100'
+        }`}>
+          {syncStatus.text}
+        </div>
+      )}
 
       {items.length === 0 ? (
         <div className="bg-white p-8 rounded-xl shadow-md border border-gray-100 text-center">
@@ -343,7 +488,10 @@ export default function PlannedRuns() {
                 return (
                   <tr key={item.id} className="hover:bg-blue-50/30 transition-colors group">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">
-                      {dateObj ? dateObj.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' }).replace(',', '') : 'TBD'}
+                      <div className="flex flex-col">
+                        <span>{dateObj ? dateObj.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' }).replace(',', '') : 'TBD'}</span>
+                        {item.startTime && <span className="text-[10px] text-gray-400 font-medium">{item.startTime}</span>}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800">
                       {dayWeather ? (
