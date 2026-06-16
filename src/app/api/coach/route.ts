@@ -5,7 +5,7 @@ import { adminDb, adminWorkoutsDb } from '@/lib/firebase-admin';
 import { verifyAuth } from '@/lib/auth-server';
 
 // Helper to get athlete data for the coach (Using Admin DB)
-async function getAthleteData(context?: { upcomingRuns?: any[], today?: string }) {
+async function getAthleteData(context?: { upcomingRuns?: any[], today?: string, includeFullPlan?: boolean }) {
   const data: any = {
     stats: {},
     report: {},
@@ -30,16 +30,22 @@ async function getAthleteData(context?: { upcomingRuns?: any[], today?: string }
 
   // 2. Populate Upcoming Runs based on mode
   if (coachingMode === 'runna') {
-    data.upcomingRuns = context?.upcomingRuns || [];
+    const runs = context?.upcomingRuns || [];
+    data.upcomingRuns = context?.includeFullPlan ? runs : runs.slice(0, 10);
   } else {
     try {
       // Fetch from gemini_plans for Gemini mode
       const todayStr = (context?.today || new Date().toISOString()).split('T')[0];
-      const plansSnap = await adminDb.collection('gemini_plans')
+      let plansQuery = adminDb.collection('gemini_plans')
         .where('date', '>=', todayStr)
-        .orderBy('date', 'asc')
-        .limit(10)
-        .get();
+        .orderBy('date', 'asc');
+      
+      // Limit to 10 unless full plan requested
+      if (!context?.includeFullPlan) {
+        plansQuery = plansQuery.limit(10);
+      }
+
+      const plansSnap = await plansQuery.get();
       
       data.upcomingRuns = plansSnap.docs.map(doc => {
         const d = doc.data();
@@ -136,7 +142,8 @@ export async function POST(request: Request) {
       let toolResponse;
 
       if (call.name === 'get_athlete_data') {
-        toolResponse = await getAthleteData({ upcomingRuns, today });
+        const { includeFullPlan } = call.args as any;
+        toolResponse = await getAthleteData({ upcomingRuns, today, includeFullPlan });
       } else if (call.name === 'update_status') {
         const { status } = call.args as any;
         await adminDb.doc('settings/user_stats').set({

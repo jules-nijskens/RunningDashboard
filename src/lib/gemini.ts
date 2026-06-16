@@ -274,6 +274,7 @@ CONTEXTUAL AWARENESS:
     - Performance Metrics (VO2 Max, Lactate Threshold): Use these to anchor your pace and fitness expectations.
 - IMPORTANT: For recent runs, pay close attention to the "aiDescription" field. This contains the AI's structural breakdown of the run (e.g., distinguishing warmup from main effort). Use this to understand the actual quality of the session rather than just the average metrics.
 - Review upcoming runs (planned schedule) to help the athlete prepare for what's next. Use this context to identify if the current pace/intensity is sustainable or if the upcoming plan needs adjustment based on recent performance.
+- **PLAN VISIBILITY:** By default, you only see the next 10 upcoming runs. If you need to see the entire long-term training plan (e.g., to review a 2-month block or check a race date far in the future), explicitly use the \`get_athlete_data\` tool with \`includeFullPlan: true\`.
 - IMPORTANT: You can now generate or **revise** a training plan using the "generate_training_plan" tool. If you notice the athlete is consistently over-performing, struggling with fatigue, or if their physiological metrics (HRV/Sleep) are poor, proactively suggest specific improvements to the upcoming plan and call the tool to update it after confirmation.
 
 DATA INTERPRETATION RULES:
@@ -305,7 +306,16 @@ export const coachTools: any[] = [
     functionDeclarations: [
       {
         name: "get_athlete_data",
-        description: "Get the athlete's current goals, PBs, strategy report, and recent activities (runs/workouts).",
+        description: "Get the athlete's current goals, PBs, strategy report, and recent activities. Use includeFullPlan: true to see the entire future schedule.",
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            includeFullPlan: { 
+              type: SchemaType.BOOLEAN, 
+              description: "Whether to fetch the entire future training plan instead of just the next 10 runs." 
+            }
+          }
+        }
       },
       {
         name: "update_status",

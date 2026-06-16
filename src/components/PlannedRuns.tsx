@@ -452,117 +452,212 @@ export default function PlannedRuns() {
           </p>
         </div>
       ) : (
-        <div className="bg-white shadow-md rounded-xl border border-gray-100 overflow-visible">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-black text-gray-700 uppercase tracking-wider">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-black text-gray-700 uppercase tracking-wider">Weather</th>
-                <th className="px-6 py-3 text-left text-xs font-black text-gray-700 uppercase tracking-wider">Workout Name</th>
-                <th className="px-6 py-3 text-left text-xs font-black text-gray-700 uppercase tracking-wider">Run Type</th>
-                <th className="px-6 py-3 text-left text-xs font-black text-gray-700 uppercase tracking-wider">Distance</th>
-                <th className="px-6 py-3 text-left text-xs font-black text-gray-700 uppercase tracking-wider">Details</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {items.map((item) => {
-                const dateObj = item.date ? new Date(item.date) : null;
-                
-                // Skip if it's today and we already ran
-                const isToday = dateObj && dateObj.toDateString() === new Date().toDateString();
-                if (isToday && hasRunToday) return null;
+        <div className="space-y-4">
+          {/* Desktop Table View */}
+          <div className="hidden md:block bg-white shadow-md rounded-xl border border-gray-100 overflow-hidden">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-black text-gray-700 uppercase tracking-wider">Date</th>
+                  <th className="px-6 py-3 text-left text-xs font-black text-gray-700 uppercase tracking-wider">Weather</th>
+                  <th className="px-6 py-3 text-left text-xs font-black text-gray-700 uppercase tracking-wider">Workout</th>
+                  <th className="px-6 py-3 text-left text-xs font-black text-gray-700 uppercase tracking-wider">Type</th>
+                  <th className="px-6 py-3 text-left text-xs font-black text-gray-700 uppercase tracking-wider">Dist.</th>
+                  <th className="px-6 py-3 text-left text-xs font-black text-gray-700 uppercase tracking-wider">Instructions</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {items.map((item) => <DesktopRow key={item.id} item={item} weather={weather} hasRunToday={hasRunToday} />)}
+              </tbody>
+            </table>
+          </div>
 
-                // Create a local date key (YYYY-MM-DD) that matches Open-Meteo format
-                let dateKey = '';
-                if (dateObj) {
-                  const year = dateObj.getFullYear();
-                  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-                  const day = String(dateObj.getDate()).padStart(2, '0');
-                  dateKey = `${year}-${month}-${day}`;
-                }
-                
-                const { workoutName, distance, runType, description } = item;
-                const dayWeather = weather[dateKey];
-                const isWindy = dayWeather && dayWeather.windSpeed > 20;
-                
-                return (
-                  <tr key={item.id} className="hover:bg-blue-50/30 transition-colors group">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">
-                      <div className="flex flex-col">
-                        <span>{dateObj ? dateObj.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' }).replace(',', '') : 'TBD'}</span>
-                        {item.startTime && <span className="text-[10px] text-gray-400 font-medium">{item.startTime}</span>}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800">
-                      {dayWeather ? (
-                        <div className="flex items-center gap-2">
-                          <span title={`Wind: ${dayWeather.windSpeed} km/h`}>{dayWeather.emoji}</span>
-                          <span>{dayWeather.temp}°</span>
-                          {isWindy && (
-                            <span title={`Strong wind warning: ${dayWeather.windSpeed} km/h`} className="animate-pulse">
-                              🚩
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-gray-400 italic text-[10px]">No data</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-blue-600 font-black uppercase tracking-tight">
-                      {workoutName}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span className={`px-3 py-1 inline-flex text-[10px] leading-5 font-black uppercase rounded-full ${
-                        runType.toLowerCase().includes('easy') ? 'bg-green-100 text-green-700' :
-                        runType.toLowerCase().includes('long') ? 'bg-blue-100 text-blue-700' :
-                        runType.toLowerCase().includes('tempo') ? 'bg-purple-100 text-purple-700' :
-                        runType.toLowerCase().includes('intervals') ? 'bg-orange-100 text-orange-700' :
-                        runType.toLowerCase().includes('race') ? 'bg-red-200 text-red-900 border border-red-300' :
-                        runType.toLowerCase().includes('rest') ? 'bg-gray-100 text-gray-500' :
-                        'bg-gray-100 text-gray-700'
-                      }`}>
-                        {runType}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-black">
-                      {distance}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-500 max-w-md relative group/details">
-                      <div className="flex items-center gap-2">
-                        <p className="truncate font-medium italic flex-1">
-                          {description || 'No details provided'}
-                        </p>
-                      </div>
-                      
-                      {description && (
-                        <div className="invisible group-hover/details:visible absolute z-[110] bottom-full left-0 mb-3 w-80 p-6 bg-white text-gray-900 text-[13px] rounded-2xl shadow-2xl border border-gray-200 pointer-events-none transition-all opacity-0 group-hover/details:opacity-100 transform translate-y-1 group-hover/details:translate-y-0 leading-relaxed font-medium border-t-4 border-t-blue-500">
-                          <div className="mb-4 pb-2 border-b border-gray-100 flex items-center justify-between">
-                            <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Workout Instructions</span>
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{workoutName}</span>
-                          </div>
-                          <div className="space-y-3 prose-sm">
-                            <ReactMarkdown
-                              components={{
-                                ul: ({node, ...props}) => <ul className="list-disc ml-4 mb-2 space-y-1" {...props} />,
-                                ol: ({node, ...props}) => <ol className="list-decimal ml-4 mb-2 space-y-1" {...props} />,
-                                li: ({node, ...props}) => <li className="pl-1" {...props} />,
-                                p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
-                              }}
-                            >
-                              {description}
-                            </ReactMarkdown>
-                          </div>
-                          <div className="absolute top-full left-6 border-8 border-transparent border-t-white drop-shadow-sm"></div>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          {/* Mobile Card View */}
+          <div className="md:hidden space-y-3">
+            {items.map((item) => <MobileCard key={item.id} item={item} weather={weather} hasRunToday={hasRunToday} />)}
+          </div>
         </div>
       )}
     </div>
+  );
+}
+
+function DesktopRow({ item, weather, hasRunToday }: { item: WorkoutItem, weather: WeatherData, hasRunToday: boolean }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const dateObj = item.date ? new Date(item.date) : null;
+  const isToday = dateObj && dateObj.toDateString() === new Date().toDateString();
+  if (isToday && hasRunToday) return null;
+
+  let dateKey = '';
+  if (dateObj) {
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    dateKey = `${year}-${month}-${day}`;
+  }
+  
+  const dayWeather = weather[dateKey];
+  const isWindy = dayWeather && dayWeather.windSpeed > 20;
+
+  return (
+    <>
+      <tr 
+        onClick={() => setIsExpanded(!isExpanded)}
+        className={`cursor-pointer transition-colors ${isExpanded ? 'bg-blue-50/50' : 'hover:bg-gray-50'}`}
+      >
+        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">
+          <div className="flex flex-col">
+            <span>{dateObj ? dateObj.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' }) : 'TBD'}</span>
+            {item.startTime && <span className="text-[10px] text-gray-400 font-medium">{item.startTime}</span>}
+          </div>
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800">
+          {dayWeather ? (
+            <div className="flex items-center gap-2">
+              <span title={`Wind: ${dayWeather.windSpeed} km/h`}>{dayWeather.emoji}</span>
+              <span>{dayWeather.temp}°</span>
+              {isWindy && <span title={`Strong wind warning: ${dayWeather.windSpeed} km/h`}>🚩</span>}
+            </div>
+          ) : <span className="text-gray-400 italic text-[10px]">--</span>}
+        </td>
+        <td className="px-6 py-4 text-sm text-blue-600 font-black uppercase tracking-tight">
+          {item.workoutName}
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap text-sm">
+          <RunTypeBadge type={item.runType} />
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-black">
+          {item.distance}
+        </td>
+        <td className="px-6 py-4 text-sm text-gray-500">
+          <div className="flex items-center gap-2">
+            <p className="truncate max-w-[200px] font-medium italic">
+              {item.description || 'No instructions'}
+            </p>
+            <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        </td>
+      </tr>
+      {isExpanded && (
+        <tr className="bg-blue-50/30">
+          <td colSpan={6} className="px-12 py-6">
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-blue-100 animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
+                <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Detailed Instructions</span>
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{item.workoutName} • {item.distance}</span>
+              </div>
+              <div className="prose prose-sm max-w-none text-gray-700 leading-relaxed font-medium">
+                <ReactMarkdown
+                  components={{
+                    ul: ({node, ...props}) => <ul className="list-disc ml-4 mb-2 space-y-1" {...props} />,
+                    ol: ({node, ...props}) => <ol className="list-decimal ml-4 mb-2 space-y-1" {...props} />,
+                    li: ({node, ...props}) => <li className="pl-1" {...props} />,
+                    p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                  }}
+                >
+                  {item.description || "No specific instructions provided for this session."}
+                </ReactMarkdown>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function MobileCard({ item, weather, hasRunToday }: { item: WorkoutItem, weather: WeatherData, hasRunToday: boolean }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const dateObj = item.date ? new Date(item.date) : null;
+  const isToday = dateObj && dateObj.toDateString() === new Date().toDateString();
+  if (isToday && hasRunToday) return null;
+
+  let dateKey = '';
+  if (dateObj) {
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    dateKey = `${year}-${month}-${day}`;
+  }
+  
+  const dayWeather = weather[dateKey];
+
+  return (
+    <div 
+      onClick={() => setIsExpanded(!isExpanded)}
+      className={`bg-white rounded-2xl border transition-all active:scale-[0.98] ${
+        isExpanded ? 'border-blue-200 shadow-lg' : 'border-gray-100 shadow-sm'
+      }`}
+    >
+      <div className="p-4">
+        <div className="flex justify-between items-start mb-3">
+          <div className="flex flex-col">
+            <span className="text-sm font-black text-gray-900">
+              {dateObj ? dateObj.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' }) : 'TBD'}
+            </span>
+            {item.startTime && <span className="text-[10px] text-gray-400 font-bold uppercase">{item.startTime}</span>}
+          </div>
+          {dayWeather && (
+            <div className="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded-lg border border-gray-100">
+              <span className="text-sm">{dayWeather.emoji}</span>
+              <span className="text-xs font-black text-gray-700">{dayWeather.temp}°</span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <div className="flex justify-between items-center">
+            <h3 className="text-sm font-black text-blue-600 uppercase tracking-tight truncate max-w-[70%]">
+              {item.workoutName}
+            </h3>
+            <span className="text-sm font-black text-gray-900">{item.distance}</span>
+          </div>
+          
+          <div className="flex justify-between items-center">
+            <RunTypeBadge type={item.runType} />
+            <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      {isExpanded && (
+        <div className="px-4 pb-5 pt-2 border-t border-gray-50 bg-blue-50/10 animate-in fade-in duration-200">
+          <div className="prose prose-sm max-w-none text-gray-700 leading-relaxed font-medium">
+            <ReactMarkdown
+              components={{
+                ul: ({node, ...props}) => <ul className="list-disc ml-4 mb-2 space-y-1" {...props} />,
+                ol: ({node, ...props}) => <ol className="list-decimal ml-4 mb-2 space-y-1" {...props} />,
+                li: ({node, ...props}) => <li className="pl-1" {...props} />,
+                p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+              }}
+            >
+              {item.description || "No specific instructions provided."}
+            </ReactMarkdown>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RunTypeBadge({ type }: { type: string }) {
+  const normalized = type.toLowerCase();
+  const styles = 
+    normalized.includes('easy') ? 'bg-green-100 text-green-700' :
+    normalized.includes('long') ? 'bg-blue-100 text-blue-700' :
+    normalized.includes('tempo') ? 'bg-purple-100 text-purple-700' :
+    normalized.includes('intervals') ? 'bg-orange-100 text-orange-700' :
+    normalized.includes('race') ? 'bg-red-200 text-red-900 border border-red-300' :
+    normalized.includes('rest') ? 'bg-gray-100 text-gray-500' :
+    'bg-gray-100 text-gray-700';
+
+  return (
+    <span className={`px-3 py-1 inline-flex text-[10px] leading-5 font-black uppercase rounded-full ${styles}`}>
+      {type}
+    </span>
   );
 }
