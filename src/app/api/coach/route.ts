@@ -5,7 +5,9 @@ import { adminDb, adminWorkoutsDb } from '@/lib/firebase-admin';
 import { verifyAuth } from '@/lib/auth-server';
 
 // Helper to get athlete data for the coach (Using Admin DB)
-async function getAthleteData(context?: { upcomingRuns?: any[], today?: string, includeFullPlan?: boolean }) {
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+async function getAthleteData(context?: { upcomingRuns?: any[], customEvents?: any[], today?: string, includeFullPlan?: boolean }) {
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
   const data: any = {
     stats: {},
     report: {},
@@ -13,6 +15,7 @@ async function getAthleteData(context?: { upcomingRuns?: any[], today?: string, 
     recentRuns: [],
     recentWorkouts: [],
     upcomingRuns: [], // Will be populated below
+    customEvents: [], // Will be populated below
     today: context?.today || new Date().toISOString()
   };
 
@@ -59,6 +62,30 @@ async function getAthleteData(context?: { upcomingRuns?: any[], today?: string, 
     } catch (err) {
       console.warn("Coach: Could not fetch gemini_plans", err);
     }
+  }
+
+  // 2.5. Fetch upcoming custom events from database (limit 15)
+  try {
+    const todayStr = (context?.today || new Date().toISOString()).split('T')[0];
+    const customSnap = await adminDb.collection('custom_events')
+      .where('date', '>=', todayStr)
+      .orderBy('date', 'asc')
+      .limit(15)
+      .get();
+    data.customEvents = customSnap.docs.map(doc => {
+      const d = doc.data();
+      return {
+        id: doc.id,
+        date: d.date,
+        startTime: d.startTime || '',
+        title: d.title,
+        type: d.type,
+        description: d.description || ''
+      };
+    });
+  } catch (err) {
+    console.warn("Coach: Could not fetch custom_events from database", err);
+    data.customEvents = context?.customEvents || [];
   }
 
   // Fetch training report
@@ -109,7 +136,7 @@ export async function POST(request: Request) {
     // 0. Verify Auth
     await verifyAuth(request);
 
-    const { messages, upcomingRuns, today } = await request.json();
+    const { messages, upcomingRuns, customEvents, today } = await request.json();
 
     if (!messages || messages.length === 0) {
       return NextResponse.json({ error: 'No messages provided' }, { status: 400 });
@@ -143,7 +170,7 @@ export async function POST(request: Request) {
 
       if (call.name === 'get_athlete_data') {
         const { includeFullPlan } = call.args as any;
-        toolResponse = await getAthleteData({ upcomingRuns, today, includeFullPlan });
+        toolResponse = await getAthleteData({ upcomingRuns, customEvents, today, includeFullPlan });
       } else if (call.name === 'update_status') {
         const { status } = call.args as any;
         await adminDb.doc('settings/user_stats').set({

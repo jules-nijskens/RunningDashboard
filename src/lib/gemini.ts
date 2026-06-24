@@ -4,7 +4,16 @@ import { Run, Workout } from "@/types/run";
 export async function generateRunReview(
   runData: Run, 
   trainingReport?: string,
-  context?: { recentRuns: Run[], recentWorkouts: Workout[], upcomingRuns?: any[], userStats?: any }
+  context?: { 
+    recentRuns: Run[]; 
+    recentWorkouts: Workout[]; 
+    upcomingRuns?: { start?: { dateTime?: string; date?: string }; summary?: string }[]; 
+    customEvents?: { date: string; startTime?: string; title: string; type: string; description?: string }[]; 
+    userStats?: {
+      performance?: { vo2max?: number | string; thresholdPace?: string; thresholdHR?: number | string };
+      health?: { hrv7d?: number | string; hrvStatus?: string; rhr7d?: number | string; sleep?: number | string };
+    };
+  }
 ) {
   const apiKey = (process.env.GEMINI_API_KEY || "").replace(/['"]/g, "");
   
@@ -35,6 +44,10 @@ export async function generateRunReview(
     `- ${u.start?.dateTime || u.start?.date}: ${u.summary}`
   ).join('\n') || "None scheduled.";
 
+  const customEventsContext = context?.customEvents?.map(c =>
+    `- ${c.date}${c.startTime ? ` @ ${c.startTime}` : ''}: ${c.title} (${c.type})${c.description ? ` - ${c.description}` : ''}`
+  ).join('\n') || "None scheduled.";
+
   const userStats = context?.userStats || {};
   const healthPerformanceContext = `
     - VO2 Max: ${userStats.performance?.vo2max || 'N/A'}
@@ -58,6 +71,9 @@ export async function generateRunReview(
     UPCOMING PLANNED RUNS:
     ${upcomingRunsContext}
 
+    UPCOMING LIFE EVENTS (Concerts, Drinks, Social, Work):
+    ${customEventsContext}
+
     CURRENT RUN:
     - Type: ${runData.runType}
     - Date: ${runData.date}, ${runData.weather || "Unknown Weather"}
@@ -67,9 +83,9 @@ export async function generateRunReview(
     
     Review this run. Be punchy and specific. 
     IMPORTANT: Always explicitly reference the run being reviewed (e.g., "In today's ${runData.runType} run...", "Your ${runData.distance}km session on ${runData.date}...") so the athlete knows exactly which activity you are discussing.
-    Take upcoming runs into account (e.g. if a hard run is next, suggest extra recovery).
+    Take upcoming runs AND custom life events into account (e.g. if a hard run is next or they have social drinks or a concert tonight/tomorrow, suggest extra recovery, proper rest, or timing adjustments).
     Use the PHYSIOLOGICAL CONTEXT to explain performance variations (e.g., if HRV is unbalanced or sleep is low, acknowledge that the athlete might have felt flatter).
-
+ 
     DATA INTERPRETATION RULES:
     1. LAST LAP SENSITIVITY: If the final lap is very short (e.g., < 100m) and slow, assume the athlete forgot to stop their watch immediately. Mention the main run stats but ignore the "tail" in your performance analysis.
     2. CADENCE ANALYSIS: If a training session includes walking segments (detected by very low pace or laps with cadence < 120), you MUST IGNORE the "Average Cadence" metric for the entire session and the cadence of those walking segments. Only look at the cadence of the actual running laps to determine form. If you cannot isolate the running cadence, do not mention cadence at all.
@@ -274,6 +290,7 @@ CONTEXTUAL AWARENESS:
     - Performance Metrics (VO2 Max, Lactate Threshold): Use these to anchor your pace and fitness expectations.
 - IMPORTANT: For recent runs, pay close attention to the "aiDescription" field. This contains the AI's structural breakdown of the run (e.g., distinguishing warmup from main effort). Use this to understand the actual quality of the session rather than just the average metrics.
 - Review upcoming runs (planned schedule) to help the athlete prepare for what's next. Use this context to identify if the current pace/intensity is sustainable or if the upcoming plan needs adjustment based on recent performance.
+- **CUSTOM LIFE EVENTS:** You have access to the athlete's custom scheduled life events (e.g., social drinks, concerts, work meetings, travel). Check these events to see if they conflict with training days or might impact recovery and fatigue (e.g., suggest rest or lighter runs if the athlete has drinks scheduled the night before a run).
 - **PLAN VISIBILITY:** By default, you only see the next 10 upcoming runs. If you need to see the entire long-term training plan (e.g., to review a 2-month block or check a race date far in the future), explicitly use the \`get_athlete_data\` tool with \`includeFullPlan: true\`.
 - IMPORTANT: You can now generate or **revise** a training plan using the "generate_training_plan" tool. If you notice the athlete is consistently over-performing, struggling with fatigue, or if their physiological metrics (HRV/Sleep) are poor, proactively suggest specific improvements to the upcoming plan and call the tool to update it after confirmation.
 
@@ -306,7 +323,7 @@ export const coachTools: any[] = [
     functionDeclarations: [
       {
         name: "get_athlete_data",
-        description: "Get the athlete's current goals, PBs, strategy report, and recent activities. Use includeFullPlan: true to see the entire future schedule.",
+        description: "Get the athlete's current goals, PBs, strategy report, custom scheduled life events, and recent activities. Use includeFullPlan: true to see the entire future schedule.",
         parameters: {
           type: SchemaType.OBJECT,
           properties: {

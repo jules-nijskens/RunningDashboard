@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { collection, addDoc, updateDoc, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { useChat } from '@/lib/ChatContext';
 
@@ -19,12 +19,60 @@ export default function GeminiCoach() {
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const fetchUpcomingRuns = async () => {
+    if (coachingMode === 'gemini') {
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        if (!token) return [];
+        const res = await fetch('/api/gemini-plans', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          return data.plans || [];
+        }
+      } catch (err) {
+        console.error("Coach: Failed to fetch upcoming Gemini plans for context:", err);
+      }
+      return [];
+    }
+    
+    const token = sessionStorage.getItem('google_calendar_token');
+    const calendarId = process.env.NEXT_PUBLIC_TRAINING_CALENDAR_ID;
+    if (!token || !calendarId) return [];
+
+    try {
+      const timeMin = new Date().toISOString();
+      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?timeMin=${encodeURIComponent(timeMin)}&singleEvents=true&orderBy=startTime&maxResults=50`;
+      const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        return data.items || [];
+      }
+    } catch (err) {
+      console.error("Coach: Failed to fetch upcoming runs for context:", err);
+    }
+    return [];
+  };
+  const [coachingMode, setCoachingMode] = useState<'runna' | 'gemini'>('runna');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Subscribe to coachingMode settings
+  useEffect(() => {
+    const unsubscribe = onSnapshot(doc(db, 'settings', 'user_stats'), (docSnap) => {
+      if (docSnap.exists()) {
+        setCoachingMode(docSnap.data().coachingMode || 'runna');
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Sync with context when a chat is loaded from history
   useEffect(() => {
     if (activeChatId && activeMessages) {
+      /* eslint-disable-next-line react-hooks/set-state-in-effect */
       setChatId(activeChatId);
+      /* eslint-disable-next-line react-hooks/set-state-in-effect */
       setMessages(activeMessages);
     }
   }, [activeChatId, activeMessages]);
@@ -51,21 +99,21 @@ export default function GeminiCoach() {
     }
   }, [loadChat]);
 
-  const fetchUpcomingRuns = async () => {
-    const token = sessionStorage.getItem('google_calendar_token');
-    const calendarId = process.env.NEXT_PUBLIC_TRAINING_CALENDAR_ID;
-    if (!token || !calendarId) return [];
 
+
+  const fetchCustomEvents = async () => {
     try {
-      const timeMin = new Date().toISOString();
-      const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?timeMin=${encodeURIComponent(timeMin)}&singleEvents=true&orderBy=startTime&maxResults=50`;
-      const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) return [];
+      const res = await fetch('/api/custom-events', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       if (res.ok) {
         const data = await res.json();
-        return data.items || [];
+        return data.events || [];
       }
     } catch (err) {
-      console.error("Coach: Failed to fetch upcoming runs for context:", err);
+      console.error("Coach: Failed to fetch custom events for context:", err);
     }
     return [];
   };
@@ -110,6 +158,7 @@ export default function GeminiCoach() {
 
     try {
       const upcomingRuns = await fetchUpcomingRuns();
+      const customEvents = await fetchCustomEvents();
       const token = await auth.currentUser?.getIdToken();
       
       const response = await fetch('/api/coach', {
@@ -121,6 +170,7 @@ export default function GeminiCoach() {
         body: JSON.stringify({ 
           messages: updatedMessages,
           upcomingRuns,
+          customEvents,
           today: new Date().toISOString()
         }),
       });

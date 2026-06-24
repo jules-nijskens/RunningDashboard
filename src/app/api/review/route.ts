@@ -160,11 +160,35 @@ export async function POST(request: Request) {
       }
     }
 
+    // 3.6. Fetch Upcoming Custom Life Events
+    let customEvents: { date: string; startTime?: string; title: string; type: string; description?: string }[] = [];
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const customSnap = await adminDb.collection('custom_events')
+        .where('date', '>=', todayStr)
+        .orderBy('date', 'asc')
+        .limit(5)
+        .get();
+      customEvents = customSnap.docs.map(docSnap => {
+        const d = docSnap.data();
+        return {
+          date: d.date || '',
+          startTime: d.startTime,
+          title: d.title || '',
+          type: d.type || '',
+          description: d.description
+        };
+      });
+    } catch (err) {
+      console.warn("Review: Could not fetch custom_events for context", err);
+    }
+
     // 4. Generate Review
     const review = await generateRunReview(runData, currentReport, {
       recentRuns,
       recentWorkouts,
       upcomingRuns,
+      customEvents,
       userStats
     });
 

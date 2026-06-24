@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Papa from 'papaparse';
-import { collection, addDoc, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { Run, RunType, Lap } from '@/types/run';
 
@@ -40,8 +40,20 @@ export default function UploadForm() {
   const [forestPercentage, setForestPercentage] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [coachingMode, setCoachingMode] = useState<'runna' | 'gemini'>('runna');
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(doc(db, 'settings', 'user_stats'), (docSnap) => {
+      if (docSnap.exists()) {
+        setCoachingMode(docSnap.data().coachingMode || 'runna');
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   const fetchUpcomingRuns = async () => {
+    if (coachingMode === 'gemini') return [];
+    
     const token = sessionStorage.getItem('google_calendar_token');
     const calendarId = process.env.NEXT_PUBLIC_TRAINING_CALENDAR_ID;
     if (!token || !calendarId) return [];

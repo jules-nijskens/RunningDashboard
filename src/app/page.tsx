@@ -11,10 +11,10 @@ import GeminiCoach from '@/components/GeminiCoach';
 import ChatHistory from '@/components/ChatHistory';
 import Link from 'next/link';
 
-type TabType = 'runs' | 'workouts' | 'coach';
+type TabType = 'planned-runs' | 'runs' | 'workouts' | 'coach';
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<TabType>('runs');
+  const [activeTab, setActiveTab] = useState<TabType>('planned-runs');
 
   return (
     <main className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -43,6 +43,17 @@ export default function Home() {
         <div className="mt-12">
           <div className="border-b border-gray-200 mb-8">
             <nav className="-mb-px flex space-x-8">
+              <button
+                onClick={() => setActiveTab('planned-runs')}
+                className={`
+                  py-4 px-1 border-b-2 font-black text-sm uppercase tracking-widest transition-all
+                  ${activeTab === 'planned-runs'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
+                `}
+              >
+                📅 Planned Runs
+              </button>
               <button
                 onClick={() => setActiveTab('runs')}
                 className={`
@@ -80,10 +91,13 @@ export default function Home() {
           </div>
 
           <div className="transition-all duration-300">
-            {activeTab === 'runs' ? (
+            {activeTab === 'planned-runs' ? (
+              <section className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <PlannedRuns />
+              </section>
+            ) : activeTab === 'runs' ? (
               <section className="animate-in fade-in slide-in-from-bottom-2 duration-500">
                 <RunList />
-                <PlannedRuns />
               </section>
             ) : activeTab === 'workouts' ? (
               <section className="animate-in fade-in slide-in-from-bottom-2 duration-500">
