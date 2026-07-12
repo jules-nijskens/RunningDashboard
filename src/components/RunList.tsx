@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, deleteDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Run } from '@/types/run';
 import { useRouter } from 'next/navigation';
@@ -48,7 +48,34 @@ export default function RunList() {
     e.stopPropagation(); // Prevent row click navigation
     if (window.confirm('Are you sure you want to delete this activity?')) {
       try {
-        await deleteDoc(doc(db, 'runs', id));
+        // 1. Fetch the run document to get shoeId and distance
+        const runRef = doc(db, 'runs', id);
+        const runSnap = await getDoc(runRef);
+        
+        if (runSnap.exists()) {
+          const runData = runSnap.data();
+          const shoeId = runData.shoeId;
+          const distance = runData.distance || 0;
+          
+          // 2. If a shoe is linked, decrement its distance
+          if (shoeId) {
+            try {
+              const shoeRef = doc(db, 'shoes', shoeId);
+              const shoeSnap = await getDoc(shoeRef);
+              if (shoeSnap.exists()) {
+                const currentDist = shoeSnap.data().currentDistance || 0;
+                await updateDoc(shoeRef, {
+                  currentDistance: Math.max(0, parseFloat((currentDist - distance).toFixed(2)))
+                });
+              }
+            } catch (shoeUpdateError) {
+              console.error("Failed to decrement shoe mileage:", shoeUpdateError);
+            }
+          }
+        }
+
+        // 3. Delete the run document
+        await deleteDoc(runRef);
       } catch (error) {
         console.error("Error deleting run:", error);
         alert("Failed to delete activity.");

@@ -6,6 +6,12 @@ import { db } from '@/lib/firebase';
 import { Run } from '@/types/run';
 import { useParams, useRouter } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
+import dynamic from 'next/dynamic';
+
+const RunMap = dynamic(() => import('@/components/RunMap'), {
+  ssr: false,
+  loading: () => <div className="w-full h-[400px] bg-gray-100 rounded-2xl flex items-center justify-center text-gray-400 font-medium animate-pulse">Loading map...</div>
+});
 
 export default function RunDetail() {
   const params = useParams();
@@ -67,6 +73,13 @@ export default function RunDetail() {
           </div>
 
           <div className="p-8">
+            {run.routeCoordinates && run.routeCoordinates.length > 0 && (
+              <div className="mb-8">
+                <h2 className="text-lg font-bold text-gray-800 mb-3 uppercase tracking-tight">Route Map</h2>
+                <RunMap coordinates={run.routeCoordinates} />
+              </div>
+            )}
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-10">
               <div className="bg-gray-50 p-4 rounded-xl text-center">
                 <p className="text-gray-600 text-xs uppercase font-bold mb-1">Avg Pace</p>
@@ -84,6 +97,30 @@ export default function RunDetail() {
                 <p className="text-gray-600 text-xs uppercase font-bold mb-1">Calories</p>
                 <p className="text-2xl font-black text-orange-600">{run.calories}</p>
               </div>
+              {run.averagePower !== undefined && (
+                <div className="bg-gray-50 p-4 rounded-xl text-center">
+                  <p className="text-gray-600 text-xs uppercase font-bold mb-1">Avg Power</p>
+                  <p className="text-2xl font-black text-yellow-600">{run.averagePower} W</p>
+                </div>
+              )}
+              {run.averageGroundContactTime !== undefined && (
+                <div className="bg-gray-50 p-4 rounded-xl text-center">
+                  <p className="text-gray-600 text-xs uppercase font-bold mb-1">Avg GCT</p>
+                  <p className="text-2xl font-black text-teal-600">{run.averageGroundContactTime} ms</p>
+                </div>
+              )}
+              {run.averageVerticalOscillation !== undefined && (
+                <div className="bg-gray-50 p-4 rounded-xl text-center">
+                  <p className="text-gray-600 text-xs uppercase font-bold mb-1">Vert. Osc.</p>
+                  <p className="text-2xl font-black text-indigo-600">{run.averageVerticalOscillation} cm</p>
+                </div>
+              )}
+              {run.averageStrideLength !== undefined && (
+                <div className="bg-gray-50 p-4 rounded-xl text-center">
+                  <p className="text-gray-600 text-xs uppercase font-bold mb-1">Stride Length</p>
+                  <p className="text-2xl font-black text-pink-600">{run.averageStrideLength} m</p>
+                </div>
+              )}
               <div className="bg-gray-50 p-4 rounded-xl text-center">
                 <p className="text-gray-600 text-xs uppercase font-bold mb-1">Ascent</p>
                 <p className="text-2xl font-black text-green-600">{run.ascent}m</p>
@@ -152,47 +189,79 @@ export default function RunDetail() {
               </div>
             )}
 
-            {run.laps && run.laps.length > 0 && (
-              <div>
-                <h2 className="text-lg font-bold text-gray-800 mb-4 uppercase tracking-tight">Laps</h2>
-                <div className="overflow-x-auto border border-gray-100 rounded-xl">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Lap</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Distance</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Time</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Pace</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Avg HR</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Cadence</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {run.laps.map((lap) => (
-                        <tr key={lap.lapNumber} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-gray-900">{lap.lapNumber}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{lap.distance} km</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{lap.time}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">{lap.avgPace}</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{lap.avgHR} bpm</td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{lap.avgCadence} spm</td>
+            {run.laps && run.laps.length > 0 && (() => {
+              const hasPower = run.laps.some(l => l.avgPower !== undefined);
+              const hasDynamics = run.laps.some(l => l.avgStanceTime !== undefined);
+              const hasTemp = run.laps.some(l => l.avgTemperature !== undefined);
+              return (
+                <div>
+                  <h2 className="text-lg font-bold text-gray-800 mb-4 uppercase tracking-tight">Laps</h2>
+                  <div className="overflow-x-auto border border-gray-100 rounded-xl">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Lap</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Distance</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Time</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Pace</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Avg HR</th>
+                          <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Cadence</th>
+                          {hasPower && <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Power</th>}
+                          {hasDynamics && (
+                            <>
+                              <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">GCT</th>
+                              <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Vert Osc</th>
+                              <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Stride</th>
+                            </>
+                          )}
+                          {hasTemp && <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Temp</th>}
                         </tr>
-                      ))}
-                    </tbody>
-                    <tfoot className="bg-gray-50 font-black">
-                      <tr>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 uppercase">Total</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{run.distance} km</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{run.duration}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-blue-700">{run.averagePace}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-red-600">{run.averageHeartRate} bpm</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-blue-600">{run.averageCadence} spm</td>
-                      </tr>
-                    </tfoot>
-                  </table>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {run.laps.map((lap) => (
+                          <tr key={lap.lapNumber} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-gray-900">{lap.lapNumber}</td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{lap.distance} km</td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{lap.time}</td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 font-medium">{lap.avgPace}</td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{lap.avgHR} bpm</td>
+                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{lap.avgCadence} spm</td>
+                            {hasPower && <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{lap.avgPower !== undefined ? `${lap.avgPower} W` : '--'}</td>}
+                            {hasDynamics && (
+                              <>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{lap.avgStanceTime !== undefined ? `${lap.avgStanceTime} ms` : '--'}</td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{lap.avgVerticalOscillation !== undefined ? `${lap.avgVerticalOscillation} mm` : '--'}</td>
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{lap.avgStepLength !== undefined ? `${lap.avgStepLength} mm` : '--'}</td>
+                              </>
+                            )}
+                            {hasTemp && <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{lap.avgTemperature !== undefined ? `${lap.avgTemperature} °C` : '--'}</td>}
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-gray-50 font-black">
+                        <tr>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 uppercase">Total / Avg</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{run.distance} km</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{run.duration}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-blue-700">{run.averagePace}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-red-600">{run.averageHeartRate} bpm</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-sm text-blue-600">{run.averageCadence} spm</td>
+                          {hasPower && <td className="px-4 py-3 whitespace-nowrap text-sm text-yellow-700">{run.averagePower !== undefined ? `${run.averagePower} W` : '--'}</td>}
+                          {hasDynamics && (
+                            <>
+                              <td className="px-4 py-3 whitespace-nowrap text-sm text-teal-700">{run.averageGroundContactTime !== undefined ? `${run.averageGroundContactTime} ms` : '--'}</td>
+                              <td className="px-4 py-3 whitespace-nowrap text-sm text-indigo-700">{run.averageVerticalOscillation !== undefined ? `${Math.round(run.averageVerticalOscillation * 10)} mm` : '--'}</td>
+                              <td className="px-4 py-3 whitespace-nowrap text-sm text-pink-700">{run.averageStrideLength !== undefined ? `${Math.round(run.averageStrideLength * 1000)} mm` : '--'}</td>
+                            </>
+                          )}
+                          {hasTemp && <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-700">--</td>}
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         </div>
       </div>

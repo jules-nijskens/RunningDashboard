@@ -6,7 +6,7 @@ import { verifyAuth } from '@/lib/auth-server';
 
 // Helper to get athlete data for the coach (Using Admin DB)
 /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-async function getAthleteData(context?: { upcomingRuns?: any[], customEvents?: any[], today?: string, includeFullPlan?: boolean }) {
+async function getAthleteData(context?: { upcomingRuns?: any[], customEvents?: any[], today?: string, includeFullPlan?: boolean, raceId?: string }) {
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
   const data: any = {
     stats: {},
@@ -16,8 +16,21 @@ async function getAthleteData(context?: { upcomingRuns?: any[], customEvents?: a
     recentWorkouts: [],
     upcomingRuns: [], // Will be populated below
     customEvents: [], // Will be populated below
+    activeRace: null,
     today: context?.today || new Date().toISOString()
   };
+
+  // Fetch active race context if specified
+  if (context?.raceId) {
+    try {
+      const raceSnap = await adminDb.doc(`races/${context.raceId}`).get();
+      if (raceSnap.exists) {
+        data.activeRace = { id: raceSnap.id, ...raceSnap.data() };
+      }
+    } catch (err) {
+      console.warn("Coach: Could not fetch active race details:", err);
+    }
+  }
 
   // 1. Fetch user stats (includes coachingMode)
   try {
@@ -136,7 +149,7 @@ export async function POST(request: Request) {
     // 0. Verify Auth
     await verifyAuth(request);
 
-    const { messages, upcomingRuns, customEvents, today } = await request.json();
+    const { messages, upcomingRuns, customEvents, today, raceId } = await request.json();
 
     if (!messages || messages.length === 0) {
       return NextResponse.json({ error: 'No messages provided' }, { status: 400 });
@@ -170,7 +183,7 @@ export async function POST(request: Request) {
 
       if (call.name === 'get_athlete_data') {
         const { includeFullPlan } = call.args as any;
-        toolResponse = await getAthleteData({ upcomingRuns, customEvents, today, includeFullPlan });
+        toolResponse = await getAthleteData({ upcomingRuns, customEvents, today, includeFullPlan, raceId });
       } else if (call.name === 'update_status') {
         const { status } = call.args as any;
         await adminDb.doc('settings/user_stats').set({
@@ -216,6 +229,26 @@ export async function POST(request: Request) {
         
         await batch.commit();
         toolResponse = { status: `Training plan with ${plan.length} workouts generated and saved successfully.` };
+      } else if (call.name === 'update_race_strategy') {
+        const { content } = call.args as any;
+        if (raceId) {
+          await adminDb.doc(`races/${raceId}`).update({
+            coachPreview: content
+          });
+          toolResponse = { status: 'Race strategy successfully updated with the revised version.' };
+        } else {
+          toolResponse = { error: 'No active race context found to update.' };
+        }
+      } else if (call.name === 'update_race_review') {
+        const { content } = call.args as any;
+        if (raceId) {
+          await adminDb.doc(`races/${raceId}`).update({
+            postRaceReview: content
+          });
+          toolResponse = { status: 'Race review successfully updated with the revised version.' };
+        } else {
+          toolResponse = { error: 'No active race context found to update.' };
+        }
       }
 
       result = await chat.sendMessage([{

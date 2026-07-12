@@ -27,9 +27,15 @@ export async function generateRunReview(
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
-  const lapsString = runData.laps?.map(l => 
-    `Lap ${l.lapNumber}: ${l.distance}km in ${l.time} (Pace: ${l.avgPace}, HR: ${l.avgHR}, Cadence: ${l.avgCadence})`
-  ).join('\n') || "No lap data.";
+  const lapsString = runData.laps?.map(l => {
+    let details = `Pace: ${l.avgPace}, HR: ${l.avgHR}, Cadence: ${l.avgCadence}`;
+    if (l.avgPower !== undefined) details += `, Power: ${l.avgPower}W`;
+    if (l.avgStanceTime !== undefined) details += `, GCT: ${l.avgStanceTime}ms`;
+    if (l.avgVerticalOscillation !== undefined) details += `, Vert Osc: ${l.avgVerticalOscillation}mm`;
+    if (l.avgStepLength !== undefined) details += `, Stride: ${l.avgStepLength}mm`;
+    if (l.avgTemperature !== undefined) details += `, Temp: ${l.avgTemperature}°C`;
+    return `Lap ${l.lapNumber}: ${l.distance}km in ${l.time} (${details})`;
+  }).join('\n') || "No lap data.";
 
   const recentRunsContext = context?.recentRuns.map(r => 
     `- ${r.date}: ${r.runType}, ${r.distance}km, Pace: ${r.averagePace}`
@@ -78,6 +84,10 @@ export async function generateRunReview(
     - Type: ${runData.runType}
     - Date: ${runData.date}, ${runData.weather || "Unknown Weather"}
     - Metrics: ${runData.distance}km, ${runData.duration}, ${runData.averagePace}/km, ${runData.averageHeartRate}bpm, ${runData.averageCadence}spm
+    ${runData.averagePower !== undefined ? `- Avg Power: ${runData.averagePower}W (Max Power: ${runData.maxPower}W)` : ''}
+    ${runData.averageGroundContactTime !== undefined ? `- Avg Ground Contact Time: ${runData.averageGroundContactTime}ms` : ''}
+    ${runData.averageVerticalOscillation !== undefined ? `- Avg Vertical Oscillation: ${runData.averageVerticalOscillation}cm` : ''}
+    ${runData.averageStrideLength !== undefined ? `- Avg Stride Length: ${runData.averageStrideLength}m` : ''}
     - Notes: ${runData.summary}
     - Laps: ${lapsString}
     
@@ -89,6 +99,7 @@ export async function generateRunReview(
     DATA INTERPRETATION RULES:
     1. LAST LAP SENSITIVITY: If the final lap is very short (e.g., < 100m) and slow, assume the athlete forgot to stop their watch immediately. Mention the main run stats but ignore the "tail" in your performance analysis.
     2. CADENCE ANALYSIS: If a training session includes walking segments (detected by very low pace or laps with cadence < 120), you MUST IGNORE the "Average Cadence" metric for the entire session and the cadence of those walking segments. Only look at the cadence of the actual running laps to determine form. If you cannot isolate the running cadence, do not mention cadence at all.
+    3. POWER & BIOMECHANICS: If power, ground contact time (GCT), vertical oscillation, or stride length data is present, evaluate the athlete's running form and efficiency trends. Higher GCT or excessive vertical oscillation indicates a loss of running economy, while a strong average power vs. pace shows great output. If temperature is high (e.g., > 25°C), note that cardiac drift (heart rate rising for the same power/pace) is expected and normal.
     
     TASK:
     1. Analyze the "Laps" to identify the structure (e.g., which laps were warm-up/cool-down vs. the main effort).
@@ -312,6 +323,7 @@ UPDATES:
   2. Ask for explicit confirmation.
   3. ONLY call the "update_status" or "update_strategy_report" tools AFTER confirmation.
 - To update the report, you MUST first use "get_athlete_data" to get the current content, then provide the full, revised text using the exact 4-header structure to "update_strategy_report".
+- RACES & REVIEWS: If the user asks you to modify, rewrite, or adjust their planned race strategy or their post-race review, you MUST rewrite/update the strategy or review. Explain what you are changing, ask for confirmation, and then call the \`update_race_strategy\` or \`update_race_review\` tools respectively to save the updated Markdown copy.
 
 If the athlete wants to change their primary goals, use "update_goals".
 
@@ -397,6 +409,28 @@ export const coachTools: any[] = [
             }
           },
           required: ["plan"]
+        }
+      },
+      {
+        name: "update_race_strategy",
+        description: "Updates or rewrites the pre-race pacing and strategy guide for the active race.",
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            content: { type: SchemaType.STRING, description: "The full updated Markdown strategy text. Include pacing splits table." }
+          },
+          required: ["content"]
+        }
+      },
+      {
+        name: "update_race_review",
+        description: "Updates or rewrites the post-race review analysis for the active race.",
+        parameters: {
+          type: SchemaType.OBJECT,
+          properties: {
+            content: { type: SchemaType.STRING, description: "The full updated Markdown post-race analysis text." }
+          },
+          required: ["content"]
         }
       }
     ]

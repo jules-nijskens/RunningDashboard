@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Papa from 'papaparse';
-import { collection, addDoc, doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, doc, getDoc, onSnapshot, updateDoc, getDocs } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { Run, RunType, Lap } from '@/types/run';
 
@@ -32,6 +32,7 @@ interface GarminCSVRow {
 
 export default function UploadForm() {
   const [file, setFile] = useState<File | null>(null);
+  const [parsedRunData, setParsedRunData] = useState<Partial<Run> | null>(null);
   const [runType, setRunType] = useState<RunType>('Easy');
   const [summary, setSummary] = useState('');
   const [runDate, setRunDate] = useState(new Date().toISOString().split('T')[0]);
@@ -41,6 +42,26 @@ export default function UploadForm() {
   const [isUploading, setIsUploading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [coachingMode, setCoachingMode] = useState<'runna' | 'gemini'>('runna');
+  const [shoes, setShoes] = useState<{ id: string; name: string }[]>([]);
+  const [selectedShoeId, setSelectedShoeId] = useState<string>('');
+
+  const determineDefaultShoe = (type: RunType, shoesList: { id: string; name: string }[]) => {
+    const kayano = shoesList.find(s => s.name.toLowerCase().includes('kayano'));
+    const superblast = shoesList.find(s => s.name.toLowerCase().includes('superblast'));
+
+    if (type === 'Easy' || type === 'Long Run') {
+      return kayano ? kayano.id : (shoesList[0]?.id || '');
+    } else {
+      return superblast ? superblast.id : (shoesList[0]?.id || '');
+    }
+  };
+
+  const handleRunTypeChange = (newType: RunType) => {
+    setRunType(newType);
+    if (shoes.length > 0) {
+      setSelectedShoeId(determineDefaultShoe(newType, shoes));
+    }
+  };
 
   useEffect(() => {
     const unsubscribe = onSnapshot(doc(db, 'settings', 'user_stats'), (docSnap) => {
@@ -49,6 +70,27 @@ export default function UploadForm() {
       }
     });
     return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const fetchShoes = async () => {
+      try {
+        const snap = await getDocs(collection(db, 'shoes'));
+        const shoeList: { id: string; name: string }[] = [];
+        snap.forEach((docSnap) => {
+          const data = docSnap.data();
+          shoeList.push({ id: docSnap.id, name: data.name });
+        });
+        setShoes(shoeList);
+        
+        if (shoeList.length > 0) {
+          setSelectedShoeId(determineDefaultShoe(runType, shoeList));
+        }
+      } catch (err) {
+        console.error("Failed to load shoes in upload form:", err);
+      }
+    };
+    fetchShoes();
   }, []);
 
   const fetchUpcomingRuns = async () => {
@@ -72,191 +114,170 @@ export default function UploadForm() {
     return [];
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-    }
-  };
+      const selectedFile = e.target.files[0];
+      setFile(selectedFile);
+      setParsedRunData(null);
+      setIsUploading(true);
+      setMessage(null);
 
-  const cleanHeader = (header: string) => {
-    return header.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+      try {
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+
+        const token = await auth.currentUser?.getIdToken();
+        const res = await fetch('/api/parse-fit', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
+          body: formData
+        });
+
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.error || 'Failed to parse FIT file.');
+        }
+
+        const parsed = await res.json() as Partial<Run>;
+        setParsedRunData(parsed);
+
+        // Pre-populate date/time if available
+        if (parsed.date) setRunDate(parsed.date);
+        if (parsed.time) setRunTime(parsed.time);
+
+        setMessage({ type: 'success', text: 'FIT file uploaded and parsed successfully!' });
+      } catch (err: any) {
+        console.error("Error uploading/parsing FIT file:", err);
+        setMessage({ type: 'error', text: err.message || 'Failed to process FIT file.' });
+        setFile(null);
+        if (e.target) e.target.value = '';
+      } finally {
+        setIsUploading(false);
+      }
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file) return;
+    if (!file || !parsedRunData) {
+      setMessage({ type: 'error', text: 'Please select a valid FIT file first.' });
+      return;
+    }
 
     setIsUploading(true);
     setMessage(null);
 
-    Papa.parse<GarminCSVRow>(file, {
-      header: true,
-      skipEmptyLines: true,
-      transformHeader: cleanHeader,
-      complete: async (results) => {
-        try {
-          const data = results.data as GarminCSVRow[];
-          console.log("CSV Headers detected:", Object.keys(data[0] || {}));
-          console.log("First row 'Laps' value:", data[0]?.['Laps']);
-          console.log("Last row 'Laps' value:", data[data.length - 1]?.['Laps']);
-          
-          // Find the "Summary" row for overall metrics
-          const summaryRow = data.find(row => {
-            // Check all possible keys that might contain "Summary"
-            return Object.values(row).some(val => 
-              val?.toString().trim().toLowerCase() === 'summary'
-            );
-          });
-
-          if (!summaryRow) {
-            throw new Error('No "Summary" row found in CSV.');
-          }
-
-          // Extract Laps (all rows that are NOT the Summary)
-          const lapRows = data.filter(row => 
-            row['Laps'] !== 'Summary' && 
-            row['Laps']?.toString().toLowerCase() !== 'summary' &&
-            (row['Distance km'] || row['Distance'])
-          );
-
-          const getCadence = (row: GarminCSVRow) => {
-            // Priority list of exact matches
-            const keys = ['Avg Run Cadence spm', 'Avg Cadence', 'Avg Run Cadence'];
-            for (const k of keys) {
-              if (row[k]) return parseInt(row[k]!);
-            }
-            // Fallback: search for any key containing 'cadence' and 'avg'
-            const dynamicKey = Object.keys(row).find(k => 
-              k.toLowerCase().includes('cadence') && k.toLowerCase().includes('avg')
-            );
-            if (dynamicKey && row[dynamicKey]) return parseInt(row[dynamicKey]!);
-            return 0;
-          };
-
-          const laps: Lap[] = lapRows.map((row, index) => ({
-            lapNumber: parseInt(row['Laps'] || (index + 1).toString()),
-            time: row['Time'] || '00:00',
-            distance: parseFloat((row['Distance km'] || row['Distance'] || '0').toString().replace(',', '.')),
-            avgPace: row['Avg Pace min/km'] || row['Avg Pace'] || '0:00',
-            avgHR: parseInt(row['Avg HR bpm'] || row['Avg HR'] || '0'),
-            maxHR: parseInt(row['Max HR bpm'] || row['Max HR'] || '0'),
-            avgCadence: getCadence(row),
-          }));
-
-          const getValue = (row: GarminCSVRow, keys: string[]) => {
-            for (const key of keys) {
-              if (row[key] !== undefined && row[key] !== null && row[key] !== '') {
-                return row[key] || '';
-              }
-            }
-            return '';
-          };
-
-          const distanceStr = getValue(summaryRow, ['Distance km', 'Distance']).replace(',', '.');
-          const caloriesStr = getValue(summaryRow, ['Calories C', 'Calories']).replace(',', '');
-
-          // Fetch user goal from settings
-          let userGoal = "";
-          try {
-            const settingsSnap = await getDoc(doc(db, 'settings', 'user_stats'));
-            if (settingsSnap.exists()) {
-              userGoal = settingsSnap.data().goal || "";
-            }
-          } catch (goalError) {
-            console.error("Failed to fetch user goal:", goalError);
-          }
-
-          const newRun: Run = {
-            date: getValue(summaryRow, ['Date']) || runDate,
-            runType,
-            summary,
-            distance: parseFloat(distanceStr || '0'),
-            duration: getValue(summaryRow, ['Time', 'Duration']) || '00:00:00',
-            averagePace: getValue(summaryRow, ['Avg Pace min/km', 'Avg Pace', 'Avg Moving Pace min/km']) || '0:00',
-            calories: parseInt(caloriesStr || '0'),
-            averageHeartRate: parseInt(getValue(summaryRow, ['Avg HR bpm', 'Avg HR']) || '0'),
-            maxHeartRate: parseInt(getValue(summaryRow, ['Max HR bpm', 'Max HR']) || '0'),
-            averageCadence: getCadence(summaryRow),
-            ascent: parseInt(getValue(summaryRow, ['Total Ascent m', 'Total Ascent']) || '0'),
-            descent: parseInt(getValue(summaryRow, ['Total Descent m', 'Total Descent']) || '0'),
-            timestamp: new Date(getValue(summaryRow, ['Date']) || runDate).getTime(),
-            time: runTime,
-            location: location,
-            laps: laps,
-            userGoal: userGoal,
-            surfacePercentages: {
-              forestTrail: forestPercentage,
-              bikingPath: 100 - forestPercentage
-            }
-          };
-
-          // Generate AI Review
-          try {
-            const upcomingRuns = await fetchUpcomingRuns();
-            const token = await auth.currentUser?.getIdToken();
-            
-            const reviewRes = await fetch('/api/review', {
-              method: 'POST',
-              headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-              },
-              body: JSON.stringify({ ...newRun, upcomingRuns }),
-            });
-            if (reviewRes.ok) {
-              const { review } = await reviewRes.json();
-              newRun.coachReview = review.long;
-              newRun.coachReviewShort = review.short;
-              newRun.aiDescription = review.structure;
-            }
-          } catch (aiError) {
-            console.error("AI Review failed:", aiError);
-          }
-
-          await addDoc(collection(db, 'runs'), newRun);
-          
-          if (newRun.coachReview) {
-            try {
-              const runTitle = `${newRun.runType} Run - ${newRun.distance}km`;
-              const chatRef = await addDoc(collection(db, 'chats'), {
-                timestamp: Date.now(),
-                title: `Review: ${runTitle}`,
-                messages: [
-                  { role: 'user', content: `I just uploaded a new ${runTitle} completed in ${newRun.duration}. Could you analyze it?` },
-                  { role: 'model', content: newRun.coachReview }
-                ]
-              });
-              // Store the ID so the dashboard can open it automatically
-              sessionStorage.setItem('openReviewChatId', chatRef.id);
-            } catch (chatError) {
-              console.error("Failed to create chat history for run review:", chatError);
-            }
-          }
-          
-          setMessage({ type: 'success', text: 'Run with laps uploaded successfully!' });
-          setTimeout(() => {
-            window.location.href = '/';
-          }, 1500);
-          setFile(null);
-          setSummary('');
-          
-          const fileInput = document.getElementById('file-upload') as HTMLInputElement;
-          if (fileInput) fileInput.value = '';
-        } catch (error: unknown) {
-          console.error('Error uploading run:', error);
-          const errorMessage = error instanceof Error ? error.message : 'Failed to upload run.';
-          setMessage({ type: 'error', text: errorMessage });
-        } finally {
-          setIsUploading(false);
+    try {
+      // Fetch user goal from settings
+      let userGoal = "";
+      try {
+        const settingsSnap = await getDoc(doc(db, 'settings', 'user_stats'));
+        if (settingsSnap.exists()) {
+          userGoal = settingsSnap.data().goal || "";
         }
-      },
-      error: (error: Error) => {
-        console.error('Error parsing CSV:', error);
-        setMessage({ type: 'error', text: 'Error parsing CSV file.' });
-        setIsUploading(false);
+      } catch (goalError) {
+        console.error("Failed to fetch user goal:", goalError);
       }
-    });
+
+      const selectedShoe = shoes.find(s => s.id === selectedShoeId);
+
+      const newRun: Run = {
+        ...parsedRunData,
+        runType,
+        summary,
+        location,
+        userGoal,
+        shoeId: selectedShoeId || undefined,
+        shoeName: selectedShoe ? selectedShoe.name : undefined,
+        surfacePercentages: {
+          forestTrail: forestPercentage,
+          bikingPath: 100 - forestPercentage
+        },
+        // Apply overrides if user modified them in form
+        date: runDate,
+        time: runTime,
+        timestamp: new Date(`${runDate}T${runTime}`).getTime(),
+      } as Run;
+
+      // Generate AI Review
+      try {
+        const upcomingRuns = await fetchUpcomingRuns();
+        const token = await auth.currentUser?.getIdToken();
+        
+        const reviewRes = await fetch('/api/review', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ ...newRun, upcomingRuns }),
+        });
+        if (reviewRes.ok) {
+          const { review } = await reviewRes.json();
+          newRun.coachReview = review.long;
+          newRun.coachReviewShort = review.short;
+          newRun.aiDescription = review.structure;
+        }
+      } catch (aiError) {
+        console.error("AI Review failed:", aiError);
+      }
+
+      await addDoc(collection(db, 'runs'), newRun);
+      
+      if (selectedShoeId && newRun.distance) {
+        try {
+          const shoeRef = doc(db, 'shoes', selectedShoeId);
+          const shoeSnap = await getDoc(shoeRef);
+          if (shoeSnap.exists()) {
+            const currentDist = shoeSnap.data().currentDistance || 0;
+            await updateDoc(shoeRef, {
+              currentDistance: parseFloat((currentDist + newRun.distance).toFixed(2))
+            });
+          }
+        } catch (shoeUpdateError) {
+          console.error("Failed to increment shoe mileage:", shoeUpdateError);
+        }
+      }
+      
+      if (newRun.coachReview) {
+        try {
+          const runTitle = `${newRun.runType} Run - ${newRun.distance}km`;
+          const chatRef = await addDoc(collection(db, 'chats'), {
+            timestamp: Date.now(),
+            title: `Review: ${runTitle}`,
+            messages: [
+              { role: 'user', content: `I just uploaded a new ${runTitle} completed in ${newRun.duration}. Could you analyze it?` },
+              { role: 'model', content: newRun.coachReview }
+            ]
+          });
+          // Store the ID so the dashboard can open it automatically
+          sessionStorage.setItem('openReviewChatId', chatRef.id);
+        } catch (chatError) {
+          console.error("Failed to create chat history for run review:", chatError);
+        }
+      }
+      
+      setMessage({ type: 'success', text: 'Run with advanced metrics and route uploaded successfully!' });
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 1500);
+      setFile(null);
+      setParsedRunData(null);
+      setSummary('');
+      
+      const fileInput = document.getElementById('file-upload') as HTMLInputElement;
+      if (fileInput) fileInput.value = '';
+    } catch (error: unknown) {
+      console.error('Error uploading run:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to upload run.';
+      setMessage({ type: 'error', text: errorMessage });
+    } finally {
+      setIsUploading(false);
+    }
   };
+
 
   return (
     <div className="bg-white p-8 rounded-2xl shadow-xl border-2 border-gray-100 mb-8">
@@ -264,11 +285,11 @@ export default function UploadForm() {
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="bg-blue-50 p-5 rounded-xl border border-blue-100 shadow-sm">
-            <label className="block text-xs font-black text-blue-800 uppercase tracking-widest mb-3">Garmin CSV File</label>
+            <label className="block text-xs font-black text-blue-800 uppercase tracking-widest mb-3">Garmin FIT File</label>
             <input
               id="file-upload"
               type="file"
-              accept=".csv"
+              accept=".fit"
               onChange={handleFileChange}
               className="block w-full text-sm text-gray-500
                 file:mr-4 file:py-2.5 file:px-6
@@ -316,11 +337,25 @@ export default function UploadForm() {
           <label className="block text-xs font-black text-orange-800 uppercase tracking-widest mb-3">Run Type</label>
           <select
             value={runType}
-            onChange={(e) => setRunType(e.target.value as RunType)}
+            onChange={(e) => handleRunTypeChange(e.target.value as RunType)}
             className="w-full p-3 border-2 border-gray-300 rounded-xl text-lg font-bold text-gray-900 focus:border-orange-600 focus:ring-2 focus:ring-orange-100 focus:outline-none bg-white shadow-inner appearance-none"
           >
             {RUN_TYPES.map(type => (
               <option key={type} value={type}>{type}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="bg-blue-50 p-5 rounded-xl border border-blue-100 shadow-sm">
+          <label className="block text-xs font-black text-blue-800 uppercase tracking-widest mb-3">Shoe Used</label>
+          <select
+            value={selectedShoeId}
+            onChange={(e) => setSelectedShoeId(e.target.value)}
+            className="w-full p-3 border-2 border-gray-300 rounded-xl text-lg font-bold text-gray-900 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:outline-none bg-white shadow-inner"
+          >
+            <option value="">-- No Shoe --</option>
+            {shoes.map(shoe => (
+              <option key={shoe.id} value={shoe.id}>{shoe.name}</option>
             ))}
           </select>
         </div>

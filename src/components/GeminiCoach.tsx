@@ -11,7 +11,7 @@ interface Message {
   content: string;
 }
 
-export default function GeminiCoach() {
+export default function GeminiCoach({ activeRaceId }: { activeRaceId?: string }) {
   const { activeChatId, activeMessages, isCoachOpen, setIsCoachOpen, resetChat, loadChat } = useChat();
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([
@@ -77,27 +77,33 @@ export default function GeminiCoach() {
     }
   }, [activeChatId, activeMessages]);
 
-  // Check for pending review chat from upload
+  // Check for pending review chat from upload & custom events
   useEffect(() => {
-    const pendingChatId = sessionStorage.getItem('openReviewChatId');
-    if (pendingChatId) {
-      sessionStorage.removeItem('openReviewChatId');
-      
-      const fetchPendingChat = async () => {
+    const checkPendingChat = async () => {
+      const pendingChatId = sessionStorage.getItem('openReviewChatId');
+      if (pendingChatId) {
+        sessionStorage.removeItem('openReviewChatId');
         try {
           const snap = await getDoc(doc(db, 'chats', pendingChatId));
           if (snap.exists()) {
             const data = snap.data();
             loadChat(snap.id, data.messages);
+            setIsCoachOpen(true); // Open chatbot drawer automatically
           }
         } catch (err) {
           console.error("Coach: Failed to load pending review chat:", err);
         }
-      };
-      
-      fetchPendingChat();
-    }
-  }, [loadChat]);
+      }
+    };
+
+    checkPendingChat();
+
+    // Listen for custom trigger on the same page
+    window.addEventListener('openReviewChat', checkPendingChat);
+    return () => {
+      window.removeEventListener('openReviewChat', checkPendingChat);
+    };
+  }, [loadChat, setIsCoachOpen]);
 
 
 
@@ -171,7 +177,8 @@ export default function GeminiCoach() {
           messages: updatedMessages,
           upcomingRuns,
           customEvents,
-          today: new Date().toISOString()
+          today: new Date().toISOString(),
+          raceId: activeRaceId
         }),
       });
 

@@ -9,9 +9,10 @@ import WeeklyStats from '@/components/WeeklyStats';
 import PredictionCard from '@/components/PredictionCard';
 import GeminiCoach from '@/components/GeminiCoach';
 import ChatHistory from '@/components/ChatHistory';
+import RaceDashboard from '@/components/RaceDashboard';
 import Link from 'next/link';
 
-type TabType = 'planned-runs' | 'runs' | 'workouts' | 'coach';
+type TabType = 'planned-runs' | 'runs' | 'workouts' | 'races' | 'coach';
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<TabType>('planned-runs');
@@ -77,6 +78,17 @@ export default function Home() {
                 🏋️‍♂️ Gym Workouts
               </button>
               <button
+                onClick={() => setActiveTab('races')}
+                className={`
+                  py-4 px-1 border-b-2 font-black text-sm uppercase tracking-widest transition-all
+                  ${activeTab === 'races'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
+                `}
+              >
+                🏆 Races
+              </button>
+              <button
                 onClick={() => setActiveTab('coach')}
                 className={`
                   py-4 px-1 border-b-2 font-black text-sm uppercase tracking-widest transition-all
@@ -102,6 +114,10 @@ export default function Home() {
             ) : activeTab === 'workouts' ? (
               <section className="animate-in fade-in slide-in-from-bottom-2 duration-500">
                 <WorkoutList />
+              </section>
+            ) : activeTab === 'races' ? (
+              <section className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <RaceDashboard />
               </section>
             ) : (
               <section className="animate-in fade-in slide-in-from-bottom-2 duration-500">

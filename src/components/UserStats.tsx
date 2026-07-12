@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { doc, onSnapshot, setDoc, collection, addDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, collection, addDoc, deleteDoc, updateDoc, query, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { Shoe } from '@/types/run';
+import { Trash2, Plus, AlertTriangle, Check, Edit2, X, Trophy } from 'lucide-react';
 import Link from 'next/link';
 
 interface PB {
@@ -56,6 +58,98 @@ export default function UserStats() {
   const [stats, setStats] = useState<UserStatsData | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<UserStatsData | null>(null);
+
+  // Shoe Locker State Hooks
+  const [shoes, setShoes] = useState<Shoe[]>([]);
+  const [newShoeName, setNewShoeName] = useState('');
+  const [newShoeMax, setNewShoeMax] = useState('800');
+  const [editingShoeId, setEditingShoeId] = useState<string | null>(null);
+  const [editMaxVal, setEditMaxVal] = useState('');
+
+  // Fetch Shoes & Bootstrap if empty
+  useEffect(() => {
+    const q = query(collection(db, 'shoes'), orderBy('createdAt', 'asc'));
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const shoeList: Shoe[] = [];
+      snapshot.forEach((docSnap) => {
+        shoeList.push({ id: docSnap.id, ...docSnap.data() } as Shoe);
+      });
+
+      if (shoeList.length === 0 && snapshot.empty) {
+        try {
+          const defaults = [
+            { name: 'Superblast 2', maxDistance: 800, currentDistance: 0, createdAt: Date.now() },
+            { name: 'Kayano', maxDistance: 800, currentDistance: 0, createdAt: Date.now() }
+          ];
+          for (const shoe of defaults) {
+            await addDoc(collection(db, 'shoes'), shoe);
+          }
+          return;
+        } catch (err) {
+          console.error("Failed to bootstrap default shoes inside UserStats:", err);
+        }
+      }
+      setShoes(shoeList);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleAddShoe = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newShoeName.trim() || !newShoeMax) return;
+
+    try {
+      const maxDist = parseFloat(newShoeMax);
+      if (isNaN(maxDist) || maxDist <= 0) {
+        alert("Please specify a valid maximum mileage.");
+        return;
+      }
+
+      const newShoe: Shoe = {
+        name: newShoeName.trim(),
+        maxDistance: maxDist,
+        currentDistance: 0,
+        createdAt: Date.now()
+      };
+
+      await addDoc(collection(db, 'shoes'), newShoe);
+      setNewShoeName('');
+      setNewShoeMax('800');
+    } catch (err) {
+      console.error("Failed to add shoe inside UserStats:", err);
+      alert("Failed to add shoe.");
+    }
+  };
+
+  const handleDeleteShoe = async (id: string, name: string) => {
+    if (window.confirm(`Are you sure you want to delete "${name}" from your shoe locker?`)) {
+      try {
+        await deleteDoc(doc(db, 'shoes', id));
+      } catch (err) {
+        console.error("Failed to delete shoe inside UserStats:", err);
+        alert("Failed to delete shoe.");
+      }
+    }
+  };
+
+  const handleSaveMaxDistance = async (id: string) => {
+    const maxDist = parseFloat(editMaxVal);
+    if (isNaN(maxDist) || maxDist <= 0) {
+      alert("Please specify a valid maximum mileage.");
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, 'shoes', id), {
+        maxDistance: maxDist
+      });
+      setEditingShoeId(null);
+    } catch (err) {
+      console.error("Failed to update max mileage inside UserStats:", err);
+      alert("Failed to update max mileage.");
+    }
+  };
 
   useEffect(() => {
     const unsubscribe = onSnapshot(doc(db, 'settings', 'user_stats'), (docSnap) => {
@@ -424,33 +518,96 @@ export default function UserStats() {
             </div>
           </div>
           
-          {/* Column 3: Personal Bests */}
+          {/* Column 3: Shoe Locker Settings */}
           <div>
-            <label className="block text-xs font-black text-gray-600 uppercase tracking-widest mb-4 ml-1">Personal Bests</label>
-            <div className="space-y-4">
-              {(['5k', '10k', 'Half', 'Marathon'] as const).map((key) => (
-                <div key={key} className="p-4 bg-white rounded-xl border-2 border-gray-100 shadow-sm">
-                  <label className="block text-[10px] font-black text-gray-800 uppercase mb-2 border-b pb-1">
-                    {key === 'Marathon' ? 'Full Marathon' : key === 'Half' ? 'Half Marathon' : key}
-                  </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <input 
-                      type="text" 
-                      placeholder="00:00"
-                      value={editForm?.pbs[key].time} 
-                      onChange={e => setEditForm({...editForm!, pbs: {...editForm!.pbs, [key]: {...editForm!.pbs[key], time: e.target.value}}})} 
-                      className="w-full p-2 border border-gray-200 rounded-lg text-sm font-bold text-gray-900 focus:border-blue-600 focus:outline-none bg-gray-50/50" 
-                    />
-                    <input 
-                      type="text" 
-                      placeholder="Date"
-                      value={editForm?.pbs[key].date} 
-                      onChange={e => setEditForm({...editForm!, pbs: {...editForm!.pbs, [key]: {...editForm!.pbs[key], date: e.target.value}}})} 
-                      className="w-full p-2 border border-gray-200 rounded-lg text-[10px] font-bold text-gray-900 focus:border-blue-600 focus:outline-none bg-gray-50/50" 
-                    />
-                  </div>
+            <label className="block text-xs font-black text-gray-600 uppercase tracking-widest mb-4 ml-1">Shoe Locker Settings</label>
+            
+            {/* Add Shoe Form */}
+            <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 mb-4 space-y-3">
+              <p className="text-[10px] font-black text-gray-600 uppercase tracking-wider">Add New Shoe Pair</p>
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  placeholder="Shoe Name (e.g. Novablast)"
+                  value={newShoeName}
+                  onChange={(e) => setNewShoeName(e.target.value)}
+                  className="w-full p-2 border border-gray-200 rounded-lg text-xs font-bold text-gray-900 focus:border-blue-600 focus:outline-none bg-white"
+                />
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    placeholder="Max km"
+                    value={newShoeMax}
+                    onChange={(e) => setNewShoeMax(e.target.value)}
+                    className="w-full p-2 border border-gray-200 rounded-lg text-xs font-bold text-gray-900 focus:border-blue-600 focus:outline-none bg-white"
+                  />
+                  <button
+                    onClick={handleAddShoe}
+                    className="px-3 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-lg text-xs flex items-center justify-center gap-1 active:scale-95"
+                  >
+                    <Plus className="w-3 h-3" /> Add
+                  </button>
                 </div>
-              ))}
+              </div>
+            </div>
+
+            {/* List of Shoes inside editor */}
+            <div className="space-y-3 max-h-[250px] overflow-y-auto pr-1">
+              {shoes.map((shoe) => {
+                const isEditing = editingShoeId === shoe.id;
+                return (
+                  <div key={shoe.id} className="p-3 bg-white rounded-xl border border-gray-200 flex justify-between items-center shadow-sm">
+                    <div className="flex-1 min-w-0 pr-2">
+                      <p className="text-xs font-black text-gray-900 truncate">{shoe.name}</p>
+                      <p className="text-[9px] text-gray-400 font-bold">{shoe.currentDistance.toFixed(1)} km run</p>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      {isEditing ? (
+                        <div className="flex items-center gap-0.5">
+                          <input
+                            type="number"
+                            value={editMaxVal}
+                            onChange={(e) => setEditMaxVal(e.target.value)}
+                            className="w-14 p-1 border border-blue-500 rounded text-[10px] font-bold"
+                          />
+                          <button
+                            onClick={() => shoe.id && handleSaveMaxDistance(shoe.id)}
+                            className="p-1 text-green-600 hover:bg-green-50 rounded"
+                          >
+                            <Check className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => setEditingShoeId(null)}
+                            className="p-1 text-red-600 hover:bg-red-50 rounded"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-gray-500 font-bold">{shoe.maxDistance} km</span>
+                          <button
+                            onClick={() => {
+                              setEditingShoeId(shoe.id || null);
+                              setEditMaxVal(shoe.maxDistance.toString());
+                            }}
+                            className="text-gray-400 hover:text-blue-600 p-0.5"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => shoe.id && handleDeleteShoe(shoe.id, shoe.name)}
+                            className="text-gray-400 hover:text-red-500 p-0.5"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -472,7 +629,15 @@ export default function UserStats() {
         </button>
         <div>
           <div className="flex justify-between items-start mb-4">
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Training Focus</p>
+            <div>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Training Focus</p>
+              <Link 
+                href="/status" 
+                className="text-[9px] font-black text-blue-600 hover:text-blue-700 hover:underline uppercase tracking-wider mt-0.5 block"
+              >
+                View Strategy &rarr;
+              </Link>
+            </div>
             <Link 
               href="/status"
               className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tighter transition-all hover:scale-105 ${
@@ -581,39 +746,50 @@ export default function UserStats() {
         </div>
       </div>
 
-      {/* Card 4: Records */}
-      <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 relative group hover:shadow-md transition-shadow">
+      {/* Card 4: Shoe locker */}
+      <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 relative group flex flex-col justify-between hover:shadow-md transition-shadow">
         <button 
           onClick={() => setIsEditing(true)} 
           className="absolute top-4 right-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity hover:text-purple-500 z-10"
+          title="Manage shoes"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
           </svg>
         </button>
-        <div className="flex justify-between items-center mb-4">
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Personal Bests</p>
-          <div className="text-right">
-            <p className="text-[8px] font-bold text-purple-400 uppercase tracking-tighter">Last Race</p>
-            <p className="text-[10px] font-black text-purple-600 whitespace-nowrap bg-purple-50 px-1.5 py-0.5 rounded">{stats.lastRace?.distance} • {stats.lastRace?.time}</p>
+        <div>
+          <div className="flex justify-between items-start mb-3">
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Shoe Locker Mileage</p>
           </div>
-        </div>
-        <div className="grid grid-cols-2 gap-y-2 gap-x-4">
-          <div className="flex justify-between items-center border-b border-gray-50 pb-1">
-            <span className="text-[10px] font-bold text-gray-400 uppercase">5K</span>
-            <span className="text-xs font-black text-gray-800">{stats.pbs['5k'].time}</span>
-          </div>
-          <div className="flex justify-between items-center border-b border-gray-50 pb-1">
-            <span className="text-[10px] font-bold text-gray-400 uppercase">10K</span>
-            <span className="text-xs font-black text-gray-800">{stats.pbs['10k'].time}</span>
-          </div>
-          <div className="flex justify-between items-center border-b border-gray-50 pb-1">
-            <span className="text-[10px] font-bold text-gray-400 uppercase">Half</span>
-            <span className="text-xs font-black text-gray-800">{stats.pbs['Half'].time}</span>
-          </div>
-          <div className="flex justify-between items-center border-b border-gray-50 pb-1">
-            <span className="text-[10px] font-bold text-gray-400 uppercase">Full</span>
-            <span className="text-xs font-black text-gray-800">{stats.pbs['Marathon'].time}</span>
+          
+          <div className="space-y-3 mt-2">
+            {shoes.map((shoe) => {
+              const pct = Math.min(100, Math.round((shoe.currentDistance / shoe.maxDistance) * 100));
+              let barColor = 'bg-green-500';
+              let textColor = 'text-green-600';
+              if (pct >= 90) {
+                barColor = 'bg-red-500';
+                textColor = 'text-red-500';
+              } else if (pct >= 70) {
+                barColor = 'bg-yellow-500';
+                textColor = 'text-yellow-600';
+              }
+
+              return (
+                <div key={shoe.id} className="space-y-1">
+                  <div className="flex justify-between items-center text-[10px] font-bold">
+                    <span className="text-gray-700 truncate max-w-[110px]">{shoe.name}</span>
+                    <span className="text-gray-500 text-right">{shoe.currentDistance.toFixed(0)} <span className="text-[8px] text-gray-400">/ {shoe.maxDistance} km</span></span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                    <div 
+                      className={`h-full rounded-full transition-all duration-300 ${barColor}`} 
+                      style={{ width: `${pct}%` }} 
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
