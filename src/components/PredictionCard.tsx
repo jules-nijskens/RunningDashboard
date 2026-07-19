@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { auth } from '@/lib/firebase';
-import { RefreshCw, AlertCircle, Brain, ChevronDown } from 'lucide-react';
+import { RefreshCw, AlertCircle, Brain, ChevronDown, Info } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 interface PredictionData {
@@ -10,6 +10,7 @@ interface PredictionData {
   probability: number;
   coachComment: string;
   detailedReasoning?: string;
+  whatHasChanged?: string;
   lastUpdated?: string;
 }
 
@@ -251,6 +252,32 @@ export default function PredictionCard() {
                   >
                     {prediction.detailedReasoning}
                   </ReactMarkdown>
+                </div>
+
+                <div className="mt-6 pt-4 border-t border-gray-100 flex items-start gap-2.5 bg-blue-50/50 p-3 rounded-lg border border-blue-100/50">
+                  <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                  <div className="text-xs text-gray-600 leading-relaxed w-full">
+                    <strong className="text-gray-900 font-bold block mb-1">What has changed</strong>
+                    {prediction.whatHasChanged ? (
+                      <div className="text-sm font-medium text-gray-600 leading-relaxed prose prose-sm max-w-none">
+                        <ReactMarkdown
+                          components={{
+                            ul: ({...props}) => <ul className="list-disc ml-4 mb-2 space-y-1" {...props} />,
+                            ol: ({...props}) => <ol className="list-decimal ml-4 mb-2 space-y-1" {...props} />,
+                            li: ({...props}) => <li className="pl-1" {...props} />,
+                            p: ({...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                            strong: ({...props}) => <strong className="font-bold text-gray-800" {...props} />,
+                          }}
+                        >
+                          {prediction.whatHasChanged}
+                        </ReactMarkdown>
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 italic">
+                        No previous run comparison available yet. Upload a new run or refresh the prediction to analyze changes.
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

@@ -55,11 +55,24 @@ export async function refreshPredictionData() {
       throw new Error(`Failed to fetch runs: ${e.message}`);
     }
 
+    // 3.5 Fetch previous prediction (if any) to compare
+    let previousPrediction: any = null;
+    try {
+      console.log("Prediction: Fetching settings/prediction for comparison...");
+      const prevSnap = await adminDb.doc('settings/prediction').get();
+      if (prevSnap.exists) {
+        previousPrediction = prevSnap.data();
+        console.log("Prediction: Loaded previous prediction for comparison", previousPrediction.currentEstimate);
+      }
+    } catch (e: any) {
+      console.warn("Prediction: Could not fetch previous prediction", e.message);
+    }
+
     // 4. Generate prediction using Gemini
     let prediction: any = null;
     try {
       console.log("Prediction: Handing off to Gemini for analysis...");
-      prediction = await generatePrediction(recentRuns, userStats, strategyReport);
+      prediction = await generatePrediction(recentRuns, userStats, strategyReport, previousPrediction);
     } catch (e: any) {
       console.error("Prediction Error: Gemini generation failed", e.message);
       throw new Error(`AI Analysis failed: ${e.message}`);

@@ -109,7 +109,7 @@ export async function generateRunReview(
     { 
       "short": "max 12 words", 
       "long": "3-4 sentences",
-      "structure": "A detailed factual breakdown of what the run actually entailed based on laps (e.g., '2K warmup, 5K main effort at 4:35/km, 1K cooldown'). Mention if it matched the plan."
+      "structure": "A detailed factual breakdown of what the run actually entailed based on laps, explicitly including the pace and average heart rate (if HR data is present) for each distinct segment (e.g., '2K warmup at 5:40/km (avg HR: 130 bpm), 5K main effort at 4:35/km (avg HR: 168 bpm), 1K cooldown at 6:00/km (avg HR: 135 bpm)'). Mention if it matched the plan."
     }
   `;
 
@@ -196,7 +196,8 @@ export async function updateTrainingReport(currentReport: string, runData: Run, 
 export async function generatePrediction(
   recentRuns: Run[],
   userStats: any,
-  strategyReport: string
+  strategyReport: string,
+  previousPrediction?: any
 ) {
   const apiKey = (process.env.GEMINI_API_KEY || "").replace(/['"]/g, "");
   if (!apiKey) return null;
@@ -204,9 +205,29 @@ export async function generatePrediction(
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
-  const runsContext = recentRuns.length > 0 
-    ? recentRuns.map(r => `- ${r.date}: ${r.runType}, ${r.distance}km, Avg Pace: ${r.averagePace}, HR: ${r.averageHeartRate || 'N/A'}, Cadence: ${r.averageCadence || 'N/A'}${r.aiDescription ? `\n  Structure: ${r.aiDescription}` : ''}`).join('\n')
+  const runsContext = recentRuns.length > 0
+    ? recentRuns.map(r => {
+        let details = `- ${r.date}: ${r.runType}, ${r.distance}km, Avg Pace: ${r.averagePace}, Avg HR: ${r.averageHeartRate || 'N/A'}, Avg Cadence: ${r.averageCadence || 'N/A'}`;
+        if (r.aiDescription) {
+          details += `\n  Structure: ${r.aiDescription}`;
+        }
+        if (r.laps && r.laps.length > 0) {
+          const lapsStr = r.laps.map(l => `    * Lap ${l.lapNumber}: ${l.distance}km, Pace: ${l.avgPace}, HR: ${l.avgHR || 'N/A'}${l.avgPower !== undefined ? `, Power: ${l.avgPower}W` : ''}`).join('\n');
+          details += `\n  Laps:\n${lapsStr}`;
+        }
+        return details;
+      }).join('\n')
     : "No recent runs available.";
+
+  let previousPredictionContext = "No previous prediction available.";
+  if (previousPrediction) {
+    previousPredictionContext = `
+    - Estimated 10K Time: ${previousPrediction.currentEstimate || 'Unknown'}
+    - Target Success Probability: ${previousPrediction.probability !== undefined ? previousPrediction.probability + '%' : 'Unknown'}
+    - Previous Insight: "${previousPrediction.coachComment || ''}"
+    - Last Updated: ${previousPrediction.lastUpdated || 'Unknown'}
+    `;
+  }
 
   console.log(`Gemini: Generating prediction. Runs context length: ${runsContext.length} chars.`);
 
@@ -225,10 +246,13 @@ export async function generatePrediction(
     - Resting HR: ${userStats.health?.rhr || 'N/A'} bpm
     - Sleep (7d Avg): ${userStats.health?.sleep || 'N/A'}
     
+    PREVIOUS PREDICTION:
+    ${previousPredictionContext}
+
     RECENT RUNS (Latest 20):
     ${runsContext}
     
-    IMPORTANT: Pay close attention to the "Structure" (aiDescription) for each run. This describes the actual breakdown (e.g., distinguishing warmup from main effort). Use the pace and intensity of the *main effort* described in the structure to anchor your fitness estimate, rather than just the average pace of the entire activity.
+    IMPORTANT: Pay close attention to the "Structure" (aiDescription) and the individual "Laps" listed for each run. This describes the actual breakdown (e.g., distinguishing warmup from main effort). You must evaluate the pace, intensity, and average heart rate of the *main effort* described in the structure and laps (e.g., comparing the heart rate response against the pace during intervals or tempos) to anchor your fitness estimate, rather than just the overall average pace and average heart rate of the entire activity.
 
     DATA INTERPRETATION RULES:
     1. CADENCE ANALYSIS: If a run structure indicates walking or if the average cadence is significantly lower than the athlete's typical running cadence (due to walking), you MUST IGNORE the "Cadence" metric for that run. Only consider cadence if it reflects active running.
@@ -238,13 +262,18 @@ export async function generatePrediction(
     2. Calculate probability (0-100) of hitting the primary goal.
     3. Provide a brief, punchy coach insight (max 25 words).
     4. Provide a detailed reasoning (2-3 paragraphs) explaining the data points, trends, and specific runs that led to this prediction. Be specific about dates and run types (e.g., "The pace during your July 12th tempo run...") so the athlete can identify the sessions you are referring to.
+    5. COMPARISON & EXPLANATION OF CHANGES: If there is a previous prediction, compare your new estimate and probability against the previous values. Explain what changed (or didn't change) in the separate "whatHasChanged" field.
+       - NOTE: It is perfectly fine and expected to keep the exact same fitness estimate and probability score if the recent activity was just a short recovery run, or if health metrics and overall training load have remained steady. 
+       - If the scores are identical or have barely changed, explain in the "whatHasChanged" field that your fitness and probability are holding stable (e.g., "Your fitness and probability remain unchanged following your recovery run on [Date], as it was designed to aid recovery rather than test pacing. Health indicators like HRV remain stable.").
+       - If the scores did change, explicitly outline which new runs or changed metrics (HRV, Sleep, VO2 Max) drove the shift.
     
     RETURN ONLY JSON:
     {
       "currentEstimate": "MM:SS",
       "probability": number,
       "coachComment": "string",
-      "detailedReasoning": "string"
+      "detailedReasoning": "string",
+      "whatHasChanged": "string"
     }
   `;
 
@@ -267,7 +296,8 @@ export async function generatePrediction(
       currentEstimate: "--:--",
       probability: 50,
       coachComment: "I'm having trouble analyzing your data right now. Check back in a moment.",
-      detailedReasoning: "The AI analysis encountered an error. This usually happens when the model is overloaded or the data structure is unexpected."
+      detailedReasoning: "The AI analysis encountered an error. This usually happens when the model is overloaded or the data structure is unexpected.",
+      whatHasChanged: "Could not retrieve change history due to an analysis error."
     };
   }
 }
