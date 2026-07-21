@@ -3,6 +3,7 @@ import { getCoachModel } from '@/lib/gemini';
 import { refreshPredictionData } from '@/lib/prediction';
 import { adminDb, adminWorkoutsDb } from '@/lib/firebase-admin';
 import { verifyAuth } from '@/lib/auth-server';
+import type { Content } from '@google/generative-ai';
 
 // Helper to get athlete data for the coach (Using Admin DB)
 /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
@@ -155,8 +156,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No messages provided' }, { status: 400 });
     }
 
+    interface IncomingMessage {
+      role: string;
+      content: string;
+    }
+
     // Format history for Gemini SDK and strip leading 'model' messages
-    let history = messages.slice(0, -1).map((m: any) => ({
+    const history: Content[] = (messages.slice(0, -1) as IncomingMessage[]).map((m) => ({
       role: m.role,
       parts: [{ text: m.content }]
     }));
@@ -168,11 +174,17 @@ export async function POST(request: Request) {
     const lastMessage = messages[messages.length - 1].content;
 
     const model = getCoachModel();
-    const chat = model.startChat({
-      history: history,
-    });
 
-    let result = await chat.sendMessage(lastMessage);
+    // Custom chat contents history management to avoid using 'function' role
+    const contents: Content[] = [
+      ...history,
+      {
+        role: 'user',
+        parts: [{ text: lastMessage }]
+      }
+    ];
+
+    let result = await model.generateContent({ contents });
     let response = result.response;
     let call = response.functionCalls()?.[0];
     let needsPredictionUpdate = false;
@@ -251,12 +263,28 @@ export async function POST(request: Request) {
         }
       }
 
-      result = await chat.sendMessage([{
-        functionResponse: {
-          name: call.name,
-          response: toolResponse
-        }
-      }]);
+      // Append model's tool call turn (including any thought signatures or extra parts) to contents history
+      if (response.candidates?.[0]?.content) {
+        contents.push(response.candidates[0].content);
+      } else {
+        contents.push({
+          role: 'model',
+          parts: [{ functionCall: call }]
+        });
+      }
+
+      // Append user's tool response turn to contents history (using 'user' role instead of 'function')
+      contents.push({
+        role: 'user',
+        parts: [{
+          functionResponse: {
+            name: call.name,
+            response: toolResponse
+          }
+        }]
+      });
+
+      result = await model.generateContent({ contents });
       response = result.response;
       call = response.functionCalls()?.[0];
     }
