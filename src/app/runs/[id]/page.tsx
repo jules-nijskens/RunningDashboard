@@ -8,6 +8,42 @@ import { useParams, useRouter } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import dynamic from 'next/dynamic';
 
+function parseDurationToSeconds(duration: string): number {
+  if (!duration) return 0;
+  const parts = duration.split(':').map(Number);
+  if (parts.length === 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  } else if (parts.length === 2) {
+    return parts[0] * 60 + parts[1];
+  }
+  return 0;
+}
+
+function calculateRunEF(run: any): number | null {
+  if (!run || !run.averageHeartRate || run.averageHeartRate <= 0 || !run.distance || !run.duration) {
+    return null;
+  }
+  
+  let totalSeconds = parseDurationToSeconds(run.duration);
+  let totalDistance = run.distance;
+  
+  if (run.laps && run.laps.length > 1) {
+    const lastLap = run.laps[run.laps.length - 1];
+    if (lastLap.distance && lastLap.distance < 0.15 && lastLap.time) {
+      const lastLapSeconds = parseDurationToSeconds(lastLap.time);
+      totalSeconds = Math.max(0, totalSeconds - lastLapSeconds);
+      totalDistance = Math.max(0, totalDistance - lastLap.distance);
+    }
+  }
+  
+  if (totalSeconds <= 0 || totalDistance <= 0) return null;
+  
+  const durationInMinutes = totalSeconds / 60;
+  const speedMPerMin = (totalDistance * 1000) / durationInMinutes;
+  
+  return parseFloat((speedMPerMin / run.averageHeartRate).toFixed(3));
+}
+
 const RunMap = dynamic(() => import('@/components/RunMap'), {
   ssr: false,
   loading: () => <div className="w-full h-[400px] bg-gray-100 rounded-2xl flex items-center justify-center text-gray-400 font-medium animate-pulse">Loading map...</div>
@@ -80,7 +116,7 @@ export default function RunDetail() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-10">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-6 mb-10">
               <div className="bg-gray-50 p-4 rounded-xl text-center">
                 <p className="text-gray-600 text-xs uppercase font-bold mb-1">Avg Pace</p>
                 <p className="text-2xl font-black text-gray-900">{run.averagePace}</p>
@@ -92,6 +128,10 @@ export default function RunDetail() {
               <div className="bg-gray-50 p-4 rounded-xl text-center">
                 <p className="text-gray-600 text-xs uppercase font-bold mb-1">Cadence</p>
                 <p className="text-2xl font-black text-blue-600">{run.averageCadence}</p>
+              </div>
+              <div className="bg-gray-50 p-4 rounded-xl text-center">
+                <p className="text-gray-600 text-xs uppercase font-bold mb-1">Efficiency (EF)</p>
+                <p className="text-2xl font-black text-emerald-600">{calculateRunEF(run) || '--'}</p>
               </div>
               <div className="bg-gray-50 p-4 rounded-xl text-center">
                 <p className="text-gray-600 text-xs uppercase font-bold mb-1">Calories</p>

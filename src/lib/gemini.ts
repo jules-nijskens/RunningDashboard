@@ -193,11 +193,26 @@ export async function updateTrainingReport(currentReport: string, runData: Run, 
   }
 }
 
+export interface RaceData {
+  name?: string;
+  targetDistance?: number | string;
+  date?: string;
+  targetTime?: string;
+}
+
 export async function generatePrediction(
   recentRuns: Run[],
   userStats: any,
   strategyReport: string,
-  previousPrediction?: any
+  previousPrediction?: any,
+  upcomingRaces?: RaceData[],
+  trainingMode?: 'race' | 'building',
+  efDetails?: {
+    currentEF: number | null;
+    efTrendPercent: number;
+    runsAnalyzedCount: number;
+    runs: { date: string; distance: number; runType: string; ef: number }[];
+  }
 ) {
   const apiKey = (process.env.GEMINI_API_KEY || "").replace(/['"]/g, "");
   if (!apiKey) return null;
@@ -219,63 +234,156 @@ export async function generatePrediction(
       }).join('\n')
     : "No recent runs available.";
 
+  const isBuildingMode = trainingMode === 'building';
+  
+  // Calculate upcoming races string
+  const upcomingRacesContext = upcomingRaces && upcomingRaces.length > 0
+    ? upcomingRaces.map(r => `- ${r.name}: ${r.targetDistance} km on ${r.date} (Target: ${r.targetTime})`).join('\n')
+    : "No upcoming races registered.";
+
+  // Calculate previous prediction string
   let previousPredictionContext = "No previous prediction available.";
   if (previousPrediction) {
-    previousPredictionContext = `
-    - Estimated 10K Time: ${previousPrediction.currentEstimate || 'Unknown'}
-    - Target Success Probability: ${previousPrediction.probability !== undefined ? previousPrediction.probability + '%' : 'Unknown'}
-    - Previous Insight: "${previousPrediction.coachComment || ''}"
-    - Last Updated: ${previousPrediction.lastUpdated || 'Unknown'}
-    `;
+    if (previousPrediction.targetDistance === 'Aerobic Efficiency (EF)' || previousPrediction.targetTime === 'Base Building') {
+      previousPredictionContext = `
+      - Last Calculated EF: ${previousPrediction.currentEstimate || 'Unknown'}
+      - Autonomic Readiness Score: ${previousPrediction.probability !== undefined ? previousPrediction.probability + '%' : 'Unknown'}
+      - Previous Insight: "${previousPrediction.coachComment || ''}"
+      - Last Updated: ${previousPrediction.lastUpdated || 'Unknown'}
+      `;
+    } else {
+      previousPredictionContext = `
+      - Estimated Race Time: ${previousPrediction.currentEstimate || 'Unknown'} (Distance: ${previousPrediction.targetDistance || '10K'})
+      - Target Success Probability: ${previousPrediction.probability !== undefined ? previousPrediction.probability + '%' : 'Unknown'}
+      - Previous Insight: "${previousPrediction.coachComment || ''}"
+      - Last Updated: ${previousPrediction.lastUpdated || 'Unknown'}
+      `;
+    }
   }
 
-  console.log(`Gemini: Generating prediction. Runs context length: ${runsContext.length} chars.`);
+  console.log(`Gemini: Generating prediction in ${trainingMode || 'race'} mode. Runs context length: ${runsContext.length} chars.`);
 
-  const prompt = `
-    You are an expert running coach. Analyze this athlete's recent training to predict their current 10K fitness and the probability of hitting their goal.
-    Today's Date: ${new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-    
-    ATHLETE GOAL: ${userStats.goals?.join(', ') || "Sub-47:30 10K by August 1st"}
-    STRATEGY REPORT: ${strategyReport}
+  let prompt = '';
 
-    HEALTH & PERFORMANCE METRICS:
-    - VO2 Max: ${userStats.performance?.vo2max || 'N/A'} (Updated: ${userStats.performance?.lastUpdated || 'Unknown'})
-    - Lactate Threshold: ${userStats.performance?.thresholdPace || 'N/A'} @ ${userStats.performance?.thresholdHR || 'N/A'} bpm
-    - HRV (7d Avg): ${userStats.health?.hrv7d || 'N/A'} ms (Updated: ${userStats.health?.lastUpdated || 'Unknown'})
-    - HRV Status: ${userStats.health?.hrvStatus || 'N/A'}
-    - Resting HR: ${userStats.health?.rhr || 'N/A'} bpm
-    - Sleep (7d Avg): ${userStats.health?.sleep || 'N/A'}
-    
-    PREVIOUS PREDICTION:
-    ${previousPredictionContext}
+  if (isBuildingMode && efDetails) {
+    const runsEFContext = efDetails.runs.map(r => 
+      `- ${r.date}: ${r.runType}, ${r.distance}km, EF: ${r.ef}`
+    ).join('\n');
 
-    RECENT RUNS (Latest 20):
-    ${runsContext}
-    
-    IMPORTANT: Pay close attention to the "Structure" (aiDescription) and the individual "Laps" listed for each run. This describes the actual breakdown (e.g., distinguishing warmup from main effort). You must evaluate the pace, intensity, and average heart rate of the *main effort* described in the structure and laps (e.g., comparing the heart rate response against the pace during intervals or tempos) to anchor your fitness estimate, rather than just the overall average pace and average heart rate of the entire activity.
+    prompt = `
+      You are an expert running coach. Analyze this athlete's Aerobic Efficiency (Pace-to-HR ratio / Efficiency Factor) and their recovery status to provide actionable feedback for their base building phase.
+      Today's Date: ${new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+      
+      TRAINING FOCUS: Base Building (Aerobic Capacity & Joint Resilience)
+      HRV & HEALTH METRICS:
+      - HRV (7d Avg): ${userStats.health?.hrv7d || 'N/A'} ms (Status: ${userStats.health?.hrvStatus || 'N/A'}, Updated: ${userStats.health?.lastUpdated || 'Unknown'})
+      - Resting HR: ${userStats.health?.rhr || 'N/A'} bpm
+      - Sleep (7d Avg): ${userStats.health?.sleep || 'N/A'}
+      
+      AEROBIC EFFICIENCY DATA (Calculated deterministically from easy/long runs, with watch-stop tails filtered out):
+      - Current Rolling 7-day EF: ${efDetails.currentEF || 'N/A'} (Speed in meters/minute divided by average HR. Higher is better/more efficient)
+      - Week-over-Week EF Trend: ${efDetails.efTrendPercent > 0 ? '+' : ''}${efDetails.efTrendPercent}% (Compared to previous 7 days)
+      - Runs analyzed: ${efDetails.runsAnalyzedCount} runs
+      - Run EFs:
+      ${runsEFContext}
+      
+      PREVIOUS PREDICTION/MONITOR STATE:
+      ${previousPredictionContext}
 
-    DATA INTERPRETATION RULES:
-    1. CADENCE ANALYSIS: If a run structure indicates walking or if the average cadence is significantly lower than the athlete's typical running cadence (due to walking), you MUST IGNORE the "Cadence" metric for that run. Only consider cadence if it reflects active running.
-    
-    TASK:
-    1. Estimate current 10K race time based on all available data (volume, consistency, and specific intensity sessions).
-    2. Calculate probability (0-100) of hitting the primary goal.
-    3. Provide a brief, punchy coach insight (max 25 words).
-    4. Provide a detailed reasoning (2-3 paragraphs) explaining the data points, trends, and specific runs that led to this prediction. Be specific about dates and run types (e.g., "The pace during your July 12th tempo run...") so the athlete can identify the sessions you are referring to.
-    5. COMPARISON & EXPLANATION OF CHANGES: If there is a previous prediction, compare your new estimate and probability against the previous values. Explain what changed (or didn't change) in the separate "whatHasChanged" field.
-       - NOTE: It is perfectly fine and expected to keep the exact same fitness estimate and probability score if the recent activity was just a short recovery run, or if health metrics and overall training load have remained steady. 
-       - If the scores are identical or have barely changed, explain in the "whatHasChanged" field that your fitness and probability are holding stable (e.g., "Your fitness and probability remain unchanged following your recovery run on [Date], as it was designed to aid recovery rather than test pacing. Health indicators like HRV remain stable.").
-       - If the scores did change, explicitly outline which new runs or changed metrics (HRV, Sleep, VO2 Max) drove the shift.
-    
-    RETURN ONLY JSON:
-    {
-      "currentEstimate": "MM:SS",
-      "probability": number,
-      "coachComment": "string",
-      "detailedReasoning": "string",
-      "whatHasChanged": "string"
-    }
-  `;
+      RECENT RUN DETAILS:
+      ${runsContext}
+
+      IMPORTANT: Do NOT perform any math or try to compute the EF yourself. Use the exact values provided. Your job is to *interpret* these numbers as an expert coach.
+
+      TONE AND LANGUAGE STYLE:
+      - Write in plain, simple, friendly, and practical coaching language.
+      - Avoid overly academic, clinical, or heavy sports science terminology.
+      - Do NOT use terms like "cardiovascular drift", "cardiac decoupling", "aerobic economy", "autonomic metrics", "autonomic state", "autonomic nervous system", or "systemic stress".
+      - Instead, explain these concepts in simple, practical terms. E.g.:
+        - Instead of "cardiovascular drift" or "decoupling", say "your heart rate climbing higher even though you slowed down".
+        - Instead of "aerobic economy/efficiency factor", talk about "how hard your heart has to work to run at a certain speed".
+        - Instead of "autonomic health metrics/nervous system", talk about "your body's battery", "fatigue levels", or "recovery indicators".
+      - Keep sentences clear, direct, and encouraging. Explain all numbers and advice so they are easy for a recreational runner to follow and put into practice.
+      
+      TASK:
+      1. Interpret the current rolling EF (${efDetails.currentEF}) and the trend (${efDetails.efTrendPercent}%). Connect it to their recovery from the recent layoff, their unbalanced HRV (${userStats.health?.hrv7d || 'N/A'} ms), cardiovascular drift observed in their runs (like the August 2nd return jog), or biomechanics.
+      2. Evaluate their autonomic nervous system (HRV & Sleep) and estimate their overall "Autonomic Readiness / Base Building Load Capacity" on a scale from 0 to 100%. (This maps to the "probability" field in the JSON).
+      3. Write a brief, punchy coach comment (max 25 words) summing up their current aerobic base state.
+      4. Write a detailed reasoning (2-3 paragraphs) detailing your analysis of their efficiency trends, heart rate decoupling, and how to structure their Zone 2/strength sessions over the next 2 weeks. Be specific about recent dates.
+      5. COMPARISON & EXPLANATION OF CHANGES: Explain what changed or remained stable in the "whatHasChanged" field, comparing the new EF and readiness score to the previous monitor state.
+      
+      RETURN ONLY JSON:
+      {
+        "targetDistance": "Aerobic Efficiency (EF)",
+        "targetTime": "Base Building",
+        "currentEstimate": "${efDetails.currentEF || '--'}",
+        "probability": number, // Your evaluated Autonomic Readiness / Base Load Capacity (0-100)
+        "coachComment": "string",
+        "detailedReasoning": "string",
+        "whatHasChanged": "string"
+      }
+    `;
+  } else {
+    // Race Mode (Default)
+    prompt = `
+      You are an expert running coach. Analyze this athlete's recent training to predict their current race fitness for their primary goal and the probability of hitting their target.
+      Today's Date: ${new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+      
+      PRIMARY GOALS: ${userStats.goals?.join(', ') || "None"}
+      UPCOMING RACES:
+      ${upcomingRacesContext}
+      
+      STRATEGY REPORT: ${strategyReport}
+
+      HEALTH & PERFORMANCE METRICS:
+      - VO2 Max: ${userStats.performance?.vo2max || 'N/A'} (Updated: ${userStats.performance?.lastUpdated || 'Unknown'})
+      - Lactate Threshold: ${userStats.performance?.thresholdPace || 'N/A'} @ ${userStats.performance?.thresholdHR || 'N/A'} bpm
+      - HRV (7d Avg): ${userStats.health?.hrv7d || 'N/A'} ms (Updated: ${userStats.health?.lastUpdated || 'Unknown'})
+      - HRV Status: ${userStats.health?.hrvStatus || 'N/A'}
+      - Resting HR: ${userStats.health?.rhr || 'N/A'} bpm
+      - Sleep (7d Avg): ${userStats.health?.sleep || 'N/A'}
+      
+      PREVIOUS PREDICTION:
+      ${previousPredictionContext}
+
+      RECENT RUNS (Latest 20):
+      ${runsContext}
+      
+      IMPORTANT: Pay close attention to the "Structure" (aiDescription) and the individual "Laps" listed for each run. This describes the actual breakdown (e.g., distinguishing warmup from main effort). You must evaluate the pace, intensity, and average heart rate of the *main effort* described in the structure and laps to anchor your fitness estimate.
+
+      DATA INTERPRETATION RULES:
+      1. CADENCE ANALYSIS: If a run structure indicates walking or if the average cadence is significantly lower than typical running cadence, you MUST IGNORE the "Cadence" metric for that run.
+      
+      TONE AND LANGUAGE STYLE:
+      - Write in plain, simple, friendly, and practical coaching language.
+      - Avoid overly academic, clinical, or heavy sports science terminology.
+      - Do NOT use terms like "cardiovascular drift", "cardiac decoupling", "aerobic economy", "autonomic metrics", "autonomic state", "autonomic nervous system", or "systemic stress".
+      - Instead, explain these concepts in simple, practical terms. E.g.:
+        - Instead of "cardiovascular drift" or "decoupling", say "your heart rate climbing higher even though you slowed down".
+        - Instead of "aerobic economy/efficiency factor", talk about "how hard your heart has to work to run at a certain speed".
+        - Instead of "autonomic health metrics/nervous system", talk about "your body's battery", "fatigue levels", or "recovery indicators".
+      - Keep sentences clear, direct, and encouraging. Explain all numbers and advice so they are easy for a recreational runner to follow and put into practice.
+
+      TASK:
+      1. IDENTIFY TARGET DISTANCE & TIME: Determine the athlete's primary active target running goal. Prioritize any upcoming registered races. If there are no upcoming races, fall back to the first goal listed under PRIMARY GOALS (e.g. "Shatter Half Marathon PB (Sub-1:40:00)"). Identify the distance (e.g. "5K", "10K", "Half Marathon", "Marathon") and the target time (e.g. "Sub-1:40:00", "Sub-47:30").
+      2. ESTIMATE CURRENT TIME: Estimate their current race finish time for THAT target distance based on all available training data. Format it as H:MM:SS for Half/Full Marathon, or MM:SS for 5K/10K.
+      3. Calculate probability (0-100) of hitting the target time.
+      4. Provide a brief, punchy coach insight (max 25 words).
+      5. Provide a detailed reasoning (2-3 paragraphs) explaining the data points, trends, and specific runs that led to this prediction. Be specific about dates.
+      6. COMPARISON & EXPLANATION OF CHANGES: Compare your new estimate and probability against the previous values. Explain what changed in the "whatHasChanged" field.
+      
+      RETURN ONLY JSON:
+      {
+        "targetDistance": "string (e.g., 'Half Marathon', '10K', '5K', 'Marathon')",
+        "targetTime": "string (e.g., 'Sub-1:40:00', 'Sub-47:30')",
+        "currentEstimate": "string (H:MM:SS or MM:SS)",
+        "probability": number,
+        "coachComment": "string",
+        "detailedReasoning": "string",
+        "whatHasChanged": "string"
+      }
+    `;
+  }
 
   try {
     const result = await model.generateContent(prompt);
@@ -293,7 +401,9 @@ export async function generatePrediction(
     console.error("Prediction Error:", error);
     // Return a fallback prediction instead of null to avoid hiding the card
     return {
-      currentEstimate: "--:--",
+      targetDistance: isBuildingMode ? "Aerobic Efficiency (EF)" : "10K",
+      targetTime: isBuildingMode ? "Base Building" : "Sub-47:30",
+      currentEstimate: isBuildingMode ? "--" : "--:--",
       probability: 50,
       coachComment: "I'm having trouble analyzing your data right now. Check back in a moment.",
       detailedReasoning: "The AI analysis encountered an error. This usually happens when the model is overloaded or the data structure is unexpected.",
@@ -301,6 +411,7 @@ export async function generatePrediction(
     };
   }
 }
+
 
 // --- NEW COACH CHAT CAPABILITIES ---
 

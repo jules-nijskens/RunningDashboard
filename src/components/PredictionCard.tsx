@@ -12,6 +12,9 @@ interface PredictionData {
   detailedReasoning?: string;
   whatHasChanged?: string;
   lastUpdated?: string;
+  targetDistance?: string;
+  targetTime?: string;
+  efTrendPercent?: number;
 }
 
 export default function PredictionCard() {
@@ -153,10 +156,10 @@ export default function PredictionCard() {
       </div>
       
       <div className="relative z-10">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 border-b border-gray-50 pb-4">
           <div className="flex items-center gap-3">
             <p className="text-xs font-black text-gray-400 uppercase tracking-widest flex items-center gap-2">
-              AI Race Predictor
+              {prediction.targetDistance === 'Aerobic Efficiency (EF)' ? 'AI Aerobic Monitor' : 'AI Race Predictor'}
               <span className="flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-blue-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
@@ -171,9 +174,15 @@ export default function PredictionCard() {
               {refreshing ? 'Updating...' : 'Refresh'}
             </button>
           </div>
-          <div className="px-3 py-1 bg-blue-50 rounded-full">
-            <p className="text-[10px] font-black text-blue-600 uppercase">Target: Sub-47:30</p>
-          </div>
+
+          {/* Target Badge for Race Mode */}
+          {prediction.targetDistance !== 'Aerobic Efficiency (EF)' && (
+            <div className="px-3 py-1 bg-blue-50 rounded-full shrink-0">
+              <p className="text-[10px] font-black text-blue-600 uppercase">
+                Target: {prediction.targetTime || 'Sub-47:30'}
+              </p>
+            </div>
+          )}
         </div>
 
         {prediction.lastUpdated && (
@@ -185,20 +194,37 @@ export default function PredictionCard() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
           <div className="flex items-end gap-4">
             <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Current 10K Fitness</p>
-              <p className="text-5xl font-black text-gray-900 tracking-tighter">
-                {prediction.currentEstimate}
+              <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">
+                {prediction.targetDistance === 'Aerobic Efficiency (EF)' ? 'Current Aerobic Efficiency' : `Current ${prediction.targetDistance || '10K'} Fitness`}
               </p>
+              <div className="flex items-baseline gap-2 mt-1">
+                <p className="text-5xl font-black text-gray-900 tracking-tighter">
+                  {prediction.currentEstimate}
+                </p>
+                {prediction.targetDistance === 'Aerobic Efficiency (EF)' && prediction.efTrendPercent !== undefined && prediction.efTrendPercent !== null && (
+                  <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
+                    prediction.efTrendPercent >= 0 
+                      ? 'bg-green-100 text-green-700' 
+                      : 'bg-red-100 text-red-700'
+                  }`}>
+                    {prediction.efTrendPercent >= 0 ? '▲' : '▼'} {Math.abs(prediction.efTrendPercent)}%
+                  </span>
+                )}
+              </div>
             </div>
             <div className="mb-1">
-              <span className="text-xs font-bold text-gray-400 uppercase">Est. Time</span>
+              <span className="text-xs font-bold text-gray-400 uppercase">
+                {prediction.targetDistance === 'Aerobic Efficiency (EF)' ? 'EF Factor' : 'Est. Time'}
+              </span>
             </div>
           </div>
           
           <div className="flex flex-col md:items-end">
             <div className="flex items-baseline gap-2">
               <p className="text-4xl font-black text-gray-900">{prediction.probability}%</p>
-              <p className="text-[10px] font-bold text-gray-400 uppercase">Probability</p>
+              <p className="text-[10px] font-bold text-gray-400 uppercase">
+                {prediction.targetDistance === 'Aerobic Efficiency (EF)' ? 'Autonomic Readiness' : 'Probability'}
+              </p>
             </div>
             {/* Progress Bar */}
             <div className="mt-2 h-2 w-full md:w-48 bg-gray-100 rounded-full overflow-hidden">

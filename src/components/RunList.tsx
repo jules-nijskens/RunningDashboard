@@ -6,6 +6,42 @@ import { db } from '@/lib/firebase';
 import { Run } from '@/types/run';
 import { useRouter } from 'next/navigation';
 
+function parseDurationToSeconds(duration: string): number {
+  if (!duration) return 0;
+  const parts = duration.split(':').map(Number);
+  if (parts.length === 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  } else if (parts.length === 2) {
+    return parts[0] * 60 + parts[1];
+  }
+  return 0;
+}
+
+function calculateRunEF(run: any): number | null {
+  if (!run || !run.averageHeartRate || run.averageHeartRate <= 0 || !run.distance || !run.duration) {
+    return null;
+  }
+  
+  let totalSeconds = parseDurationToSeconds(run.duration);
+  let totalDistance = run.distance;
+  
+  if (run.laps && run.laps.length > 1) {
+    const lastLap = run.laps[run.laps.length - 1];
+    if (lastLap.distance && lastLap.distance < 0.15 && lastLap.time) {
+      const lastLapSeconds = parseDurationToSeconds(lastLap.time);
+      totalSeconds = Math.max(0, totalSeconds - lastLapSeconds);
+      totalDistance = Math.max(0, totalDistance - lastLap.distance);
+    }
+  }
+  
+  if (totalSeconds <= 0 || totalDistance <= 0) return null;
+  
+  const durationInMinutes = totalSeconds / 60;
+  const speedMPerMin = (totalDistance * 1000) / durationInMinutes;
+  
+  return parseFloat((speedMPerMin / run.averageHeartRate).toFixed(3));
+}
+
 export default function RunList() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
@@ -138,6 +174,7 @@ export default function RunList() {
                 <th className="px-6 py-4 text-left text-[10px] font-black text-gray-500 uppercase tracking-widest">Duration</th>
                 <th className="px-6 py-4 text-left text-[10px] font-black text-gray-500 uppercase tracking-widest">Avg HR</th>
                 <th className="px-6 py-4 text-left text-[10px] font-black text-gray-500 uppercase tracking-widest">Cadence</th>
+                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-500 uppercase tracking-widest">EF</th>
                 <th className="px-6 py-4 text-left text-[10px] font-black text-gray-500 uppercase tracking-widest">Coach Review</th>
                 <th className="px-6 py-4 text-right text-[10px] font-black text-gray-500 uppercase tracking-widest">Actions</th>
               </tr>
@@ -171,6 +208,7 @@ export default function RunList() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium">{run.duration}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium">{run.averageHeartRate} bpm</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium">{run.averageCadence} spm</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-emerald-600 font-black">{calculateRunEF(run) || '--'}</td>
                   <td className="px-6 py-4 text-sm relative group/insight">
                     <div className="flex items-center gap-2 text-blue-600 bg-blue-50 px-3 py-1 rounded-full w-fit font-black text-[10px] uppercase tracking-widest transition-all group-hover/insight:bg-blue-600 group-hover/insight:text-white cursor-help">
                       <span>💡 Review</span>

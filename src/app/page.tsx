@@ -11,6 +11,7 @@ import GeminiCoach from '@/components/GeminiCoach';
 import ChatHistory from '@/components/ChatHistory';
 import RaceDashboard from '@/components/RaceDashboard';
 import Link from 'next/link';
+import { Settings } from 'lucide-react';
 
 type TabType = 'planned-runs' | 'runs' | 'workouts' | 'races' | 'coach';
 
@@ -29,12 +30,21 @@ export default function Home() {
               Track your progress and analyze your Garmin runs.
             </p>
           </div>
-          <Link 
-            href="/upload"
-            className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-sm"
-          >
-            Upload New Run
-          </Link>
+          <div className="flex gap-4 shrink-0">
+            <Link 
+              href="/settings"
+              className="inline-flex items-center justify-center px-4 py-2 border border-gray-200 text-xs font-black uppercase tracking-wider rounded-xl text-gray-500 bg-white hover:bg-gray-50 hover:text-gray-800 hover:border-gray-300 transition-colors shadow-sm"
+            >
+              <Settings className="w-3.5 h-3.5 mr-2" />
+              Settings
+            </Link>
+            <Link 
+              href="/upload"
+              className="inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-sm"
+            >
+              Upload New Run
+            </Link>
+          </div>
         </header>
 
         <UserStats />
@@ -42,8 +52,8 @@ export default function Home() {
         <PredictionCard />
 
         <div className="mt-12">
-          <div className="border-b border-gray-200 mb-8">
-            <nav className="-mb-px flex space-x-8">
+          <div className="border-b border-gray-200 mb-8 overflow-x-auto scrollbar-none">
+            <nav className="-mb-px flex space-x-6 sm:space-x-8 whitespace-nowrap pb-1">
               <button
                 onClick={() => setActiveTab('planned-runs')}
                 className={`

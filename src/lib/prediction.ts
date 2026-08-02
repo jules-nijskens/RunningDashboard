@@ -1,14 +1,73 @@
 import { adminDb, adminWorkoutsDb } from './firebase-admin';
-import { generatePrediction } from './gemini';
+import { generatePrediction, RaceData } from './gemini';
+import { Run } from '@/types/run';
+
+interface EFDetails {
+  currentEF: number | null;
+  efTrendPercent: number;
+  runsAnalyzedCount: number;
+  runs: { date: string; distance: number; runType: string; ef: number | null }[];
+}
+
+interface PredictionResult {
+  currentEstimate: string;
+  probability: number;
+  coachComment: string;
+  detailedReasoning?: string;
+  whatHasChanged?: string;
+  targetDistance?: string;
+  targetTime?: string;
+  efTrendPercent?: number | null;
+}
+
+function parseDurationToSeconds(duration: string): number {
+  if (!duration) return 0;
+  const parts = duration.split(':').map(Number);
+  if (parts.length === 3) {
+    // HH:MM:SS
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  } else if (parts.length === 2) {
+    // MM:SS
+    return parts[0] * 60 + parts[1];
+  }
+  return 0;
+}
+
+function calculateRunEF(run: Run): number | null {
+  if (!run.averageHeartRate || run.averageHeartRate <= 0 || !run.distance || !run.duration) {
+    return null;
+  }
+  
+  let totalSeconds = parseDurationToSeconds(run.duration);
+  let totalDistance = run.distance;
+  
+  // Apply watch-stop tail filtering: exclude last lap if distance < 0.15 km (150m)
+  if (run.laps && run.laps.length > 1) {
+    const lastLap = run.laps[run.laps.length - 1];
+    if (lastLap.distance && lastLap.distance < 0.15 && lastLap.time) {
+      const lastLapSeconds = parseDurationToSeconds(lastLap.time);
+      totalSeconds = Math.max(0, totalSeconds - lastLapSeconds);
+      totalDistance = Math.max(0, totalDistance - lastLap.distance);
+      console.log(`Excluding watch-stop tail for run ${run.id}: ${lastLap.distance}km in ${lastLap.time}`);
+    }
+  }
+  
+  if (totalSeconds <= 0 || totalDistance <= 0) return null;
+  
+  const durationInMinutes = totalSeconds / 60;
+  const speedMPerMin = (totalDistance * 1000) / durationInMinutes;
+  
+  return parseFloat((speedMPerMin / run.averageHeartRate).toFixed(3));
+}
 
 export async function refreshPredictionData() {
   console.log("Prediction: refreshPredictionData called");
   let userStats: any = {};
   let strategyReport: string = "No strategy report available.";
-  let recentRuns: any[] = [];
+  let recentRuns: Run[] = [];
 
   try {
-    // 1. Fetch user stats (goals) using Admin DB
+    // 1. Fetch user stats (goals, trainingMode) using Admin DB
     try {
       console.log("Prediction: Fetching settings/user_stats...");
       const statsSnap = await adminDb.doc('settings/user_stats').get();
@@ -68,11 +127,103 @@ export async function refreshPredictionData() {
       console.warn("Prediction: Could not fetch previous prediction", e.message);
     }
 
+    // 3.7 Fetch upcoming races
+    let upcomingRaces: RaceData[] = [];
+    try {
+      console.log("Prediction: Fetching upcoming races...");
+      const todayStr = new Date().toISOString().split('T')[0];
+      const racesSnap = await adminDb.collection('races')
+        .where('date', '>=', todayStr)
+        .orderBy('date', 'asc')
+        .get();
+      upcomingRaces = racesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      console.log(`Prediction: Found ${upcomingRaces.length} upcoming races.`);
+    } catch (e: any) {
+      console.warn("Prediction: Could not fetch upcoming races:", e.message);
+    }
+
+    // Check training focus mode
+    const trainingMode = userStats.trainingMode || 'race';
+    console.log("Prediction: Current training mode:", trainingMode);
+
+    let efDetails: EFDetails | null = null;
+
+    if (trainingMode === 'building') {
+      // Calculate EF for easy/long runs
+      const easyRunsWithEF = recentRuns
+        .filter(r => r.runType === 'Easy' || r.runType === 'Long Run')
+        .map(r => ({
+          id: r.id,
+          date: r.date,
+          distance: r.distance,
+          duration: r.duration,
+          averageHeartRate: r.averageHeartRate,
+          runType: r.runType,
+          ef: calculateRunEF(r)
+        }))
+        .filter(r => r.ef !== null);
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayMs = today.getTime();
+      const MS_IN_DAY = 24 * 60 * 60 * 1000;
+      const sevenDaysAgoMs = todayMs - 7 * MS_IN_DAY;
+      const fourteenDaysAgoMs = todayMs - 14 * MS_IN_DAY;
+
+      const runsLast7Days = easyRunsWithEF.filter(r => {
+        const runMs = new Date(r.date + 'T00:00:00').getTime();
+        return runMs >= sevenDaysAgoMs && runMs <= todayMs + MS_IN_DAY;
+      });
+
+      const runsPreceding7Days = easyRunsWithEF.filter(r => {
+        const runMs = new Date(r.date + 'T00:00:00').getTime();
+        return runMs >= fourteenDaysAgoMs && runMs < sevenDaysAgoMs;
+      });
+
+      const avgEFLast7Days = runsLast7Days.length > 0
+        ? runsLast7Days.reduce((acc, curr) => acc + curr.ef!, 0) / runsLast7Days.length
+        : null;
+
+      const avgEFPreceding7Days = runsPreceding7Days.length > 0
+        ? runsPreceding7Days.reduce((acc, curr) => acc + curr.ef!, 0) / runsPreceding7Days.length
+        : null;
+
+      let currentEF = avgEFLast7Days;
+      if (currentEF === null) {
+        // Fallback: use all easy runs from the last 20 runs
+        currentEF = easyRunsWithEF.length > 0
+          ? easyRunsWithEF.reduce((acc, curr) => acc + curr.ef!, 0) / easyRunsWithEF.length
+          : null;
+      }
+
+      let efTrendPercent = 0;
+      if (currentEF !== null && avgEFPreceding7Days !== null && avgEFPreceding7Days > 0) {
+        efTrendPercent = parseFloat((((currentEF - avgEFPreceding7Days) / avgEFPreceding7Days) * 100).toFixed(1));
+      }
+
+      efDetails = {
+        currentEF: currentEF !== null ? parseFloat(currentEF.toFixed(3)) : null,
+        efTrendPercent,
+        runsAnalyzedCount: easyRunsWithEF.length,
+        runs: easyRunsWithEF.map(r => ({ date: r.date, distance: r.distance, runType: r.runType, ef: r.ef }))
+      };
+
+      console.log(`Prediction: Calculated Building Mode EF details. Current EF: ${efDetails.currentEF}, Trend: ${efDetails.efTrendPercent}%`);
+    }
+
     // 4. Generate prediction using Gemini
-    let prediction: any = null;
+    let prediction: PredictionResult | null = null;
     try {
       console.log("Prediction: Handing off to Gemini for analysis...");
-      prediction = await generatePrediction(recentRuns, userStats, strategyReport, previousPrediction);
+      prediction = await generatePrediction(
+        recentRuns, 
+        userStats, 
+        strategyReport, 
+        previousPrediction, 
+        upcomingRaces,
+        trainingMode,
+        efDetails
+      );
     } catch (e: any) {
       console.error("Prediction Error: Gemini generation failed", e.message);
       throw new Error(`AI Analysis failed: ${e.message}`);
@@ -86,6 +237,7 @@ export async function refreshPredictionData() {
         console.log("Prediction: Saving to settings/prediction...");
         await adminDb.doc('settings/prediction').set({
           ...prediction,
+          efTrendPercent: efDetails?.efTrendPercent ?? null,
           lastUpdated: new Date().toISOString()
         });
         console.log("Prediction: Firestore save complete!");

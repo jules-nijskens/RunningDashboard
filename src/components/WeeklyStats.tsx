@@ -3,20 +3,58 @@
 import React, { useEffect, useState } from 'react';
 import { collection, query, orderBy, getDocs, where, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList } from 'recharts';
+import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList } from 'recharts';
 import { Activity, Calendar, Trophy } from 'lucide-react';
+
+function parseDurationToSeconds(duration: string): number {
+  if (!duration) return 0;
+  const parts = duration.split(':').map(Number);
+  if (parts.length === 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  } else if (parts.length === 2) {
+    return parts[0] * 60 + parts[1];
+  }
+  return 0;
+}
+
+function calculateRunEF(run: any): number | null {
+  if (!run.averageHeartRate || run.averageHeartRate <= 0 || !run.distance || !run.duration) {
+    return null;
+  }
+  
+  let totalSeconds = parseDurationToSeconds(run.duration);
+  let totalDistance = run.distance;
+  
+  if (run.laps && run.laps.length > 1) {
+    const lastLap = run.laps[run.laps.length - 1];
+    if (lastLap.distance && lastLap.distance < 0.15 && lastLap.time) {
+      const lastLapSeconds = parseDurationToSeconds(lastLap.time);
+      totalSeconds = Math.max(0, totalSeconds - lastLapSeconds);
+      totalDistance = Math.max(0, totalDistance - lastLap.distance);
+    }
+  }
+  
+  if (totalSeconds <= 0 || totalDistance <= 0) return null;
+  
+  const durationInMinutes = totalSeconds / 60;
+  const speedMPerMin = (totalDistance * 1000) / durationInMinutes;
+  
+  return parseFloat((speedMPerMin / run.averageHeartRate).toFixed(3));
+}
 
 interface WeeklyData {
   weekStart: string;
   completedDistance: number;
   plannedDistance: number;
   workouts: number;
+  weeklyEF?: number | null;
 }
 
 export default function WeeklyStats() {
   const [data, setData] = useState<WeeklyData[]>([]);
   const [loading, setLoading] = useState(true);
   const [coachingMode, setCoachingMode] = useState<'runna' | 'gemini'>('runna');
+  const [trainingMode, setTrainingMode] = useState<'race' | 'building'>('race');
 
   // Helper to get YYYY-MM-DD in local time
   const getLocalYYYYMMDD = (date: Date) => {
@@ -29,7 +67,9 @@ export default function WeeklyStats() {
   useEffect(() => {
     const unsubscribe = onSnapshot(doc(db, 'settings', 'user_stats'), (docSnap) => {
       if (docSnap.exists()) {
-        setCoachingMode(docSnap.data().coachingMode || 'runna');
+        const dataVal = docSnap.data();
+        setCoachingMode(dataVal.coachingMode || 'runna');
+        setTrainingMode(dataVal.trainingMode || 'race');
       }
     });
     return () => unsubscribe();
@@ -112,7 +152,7 @@ export default function WeeklyStats() {
         }
 
         // Grouping logic (Week starts on Monday)
-        const weeklyMap: { [key: string]: WeeklyData } = {};
+        const weeklyMap: { [key: string]: WeeklyData & { efSum: number; efCount: number } } = {};
 
         const getMonday = (date: Date) => {
           const d = new Date(date);
@@ -126,8 +166,25 @@ export default function WeeklyStats() {
         // Process Runs
         runs.forEach(run => {
           const monday = getMonday(new Date(run.timestamp));
-          if (!weeklyMap[monday]) weeklyMap[monday] = { weekStart: monday, completedDistance: 0, plannedDistance: 0, workouts: 0 };
+          if (!weeklyMap[monday]) {
+            weeklyMap[monday] = { 
+              weekStart: monday, 
+              completedDistance: 0, 
+              plannedDistance: 0, 
+              workouts: 0,
+              efSum: 0,
+              efCount: 0
+            };
+          }
           weeklyMap[monday].completedDistance += run.distance || 0;
+          
+          if (run.runType === 'Easy' || run.runType === 'Long Run') {
+            const ef = calculateRunEF(run);
+            if (ef !== null) {
+              weeklyMap[monday].efSum += ef;
+              weeklyMap[monday].efCount += 1;
+            }
+          }
         });
 
         // Process Workouts
@@ -141,7 +198,16 @@ export default function WeeklyStats() {
         // Process Planned
         plannedItems.forEach(item => {
           const monday = getMonday(new Date(item.date));
-          if (!weeklyMap[monday]) weeklyMap[monday] = { weekStart: monday, completedDistance: 0, plannedDistance: 0, workouts: 0 };
+          if (!weeklyMap[monday]) {
+            weeklyMap[monday] = { 
+              weekStart: monday, 
+              completedDistance: 0, 
+              plannedDistance: 0, 
+              workouts: 0,
+              efSum: 0,
+              efCount: 0
+            };
+          }
           
           if (new Date(item.date) >= new Date()) {
             weeklyMap[monday].plannedDistance += item.distance;
@@ -175,12 +241,18 @@ export default function WeeklyStats() {
           const completed = existing?.completedDistance || 0;
           const planned = existing?.plannedDistance || 0;
           const workouts = existing?.workouts || 0;
+          
+          let weeklyEF: number | null = null;
+          if (existing && existing.efCount > 0) {
+            weeklyEF = parseFloat((existing.efSum / existing.efCount).toFixed(3));
+          }
 
           finalData.push({
             weekStart: iterStr,
             completedDistance: completed,
             plannedDistance: planned,
             workouts: workouts,
+            weeklyEF: weeklyEF,
             labelHeight: 0.1, // Small height for ghost bar in stack
           } as any);
           
@@ -228,12 +300,18 @@ export default function WeeklyStats() {
             <div className="w-2.5 h-2.5 bg-gray-400 rounded-full"></div>
             <span className="text-[9px] font-black text-gray-600 uppercase tracking-widest">Plan</span>
           </div>
+          {trainingMode === 'building' && (
+            <div className="flex items-center gap-1.5">
+              <div className="w-4 h-0.5 bg-emerald-500 rounded-full"></div>
+              <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Efficiency (EF)</span>
+            </div>
+          )}
         </div>
       </div>
 
       <div className="h-64 w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 20, right: 10, left: -25, bottom: 0 }}>
+          <ComposedChart data={data} margin={{ top: 20, right: 10, left: -25, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f5" />
             <XAxis 
               dataKey="weekStart" 
@@ -252,6 +330,16 @@ export default function WeeklyStats() {
               tickLine={false}
               tick={{ fontSize: 9, fontWeight: 'bold', fill: '#9ca3af' }}
             />
+            {trainingMode === 'building' && (
+              <YAxis 
+                yAxisId="right"
+                orientation="right"
+                domain={['auto', 'auto']}
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 9, fontWeight: 'bold', fill: '#10b981' }}
+              />
+            )}
             <Tooltip 
               cursor={{ fill: '#f9fafb' }}
               contentStyle={{ 
@@ -294,7 +382,19 @@ export default function WeeklyStats() {
                 formatter={(val: any) => val > 0 ? val : ''}
               />
             </Bar>
-          </BarChart>
+            {trainingMode === 'building' && (
+              <Line 
+                yAxisId="right"
+                type="monotone"
+                dataKey="weeklyEF"
+                stroke="#10b981" 
+                strokeWidth={3}
+                dot={{ r: 4, fill: '#10b981', strokeWidth: 2 }}
+                name="Efficiency (EF)"
+                connectNulls={true}
+              />
+            )}
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
 

@@ -222,7 +222,7 @@ export default function GeminiCoach({ activeRaceId }: { activeRaceId?: string })
 
       {/* Chat Window */}
       {isCoachOpen && (
-        <div className="fixed bottom-24 right-6 w-80 md:w-96 h-[500px] bg-white rounded-2xl shadow-2xl flex flex-col z-50 overflow-hidden border border-gray-100 animate-in slide-in-from-bottom-4 duration-300">
+        <div className="fixed bottom-24 left-4 right-4 sm:left-auto sm:right-6 sm:w-96 h-[500px] bg-white rounded-2xl shadow-2xl flex flex-col z-50 overflow-hidden border border-gray-100 animate-in slide-in-from-bottom-4 duration-300">
           {/* Header */}
           <div className="bg-blue-600 p-4 text-white flex justify-between items-center">
             <div>
