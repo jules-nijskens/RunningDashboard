@@ -6,7 +6,7 @@ interface EFDetails {
   currentEF: number | null;
   efTrendPercent: number;
   runsAnalyzedCount: number;
-  runs: { date: string; distance: number; runType: string; ef: number | null }[];
+  runs: { date: string; distance: number; runType: string; ef: number }[];
 }
 
 interface PredictionResult {
@@ -101,7 +101,7 @@ export async function refreshPredictionData() {
       
       recentRuns = runsSnap.docs.map(doc => {
         const data = doc.data();
-        return { id: doc.id, ...data };
+        return { id: doc.id, ...data } as Run;
       });
       
       if (recentRuns.length > 0) {
@@ -136,7 +136,7 @@ export async function refreshPredictionData() {
         .where('date', '>=', todayStr)
         .orderBy('date', 'asc')
         .get();
-      upcomingRaces = racesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      upcomingRaces = racesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as RaceData));
       console.log(`Prediction: Found ${upcomingRaces.length} upcoming races.`);
     } catch (e: any) {
       console.warn("Prediction: Could not fetch upcoming races:", e.message);
@@ -205,7 +205,7 @@ export async function refreshPredictionData() {
         currentEF: currentEF !== null ? parseFloat(currentEF.toFixed(3)) : null,
         efTrendPercent,
         runsAnalyzedCount: easyRunsWithEF.length,
-        runs: easyRunsWithEF.map(r => ({ date: r.date, distance: r.distance, runType: r.runType, ef: r.ef }))
+        runs: easyRunsWithEF.map(r => ({ date: r.date, distance: r.distance, runType: r.runType, ef: r.ef as number }))
       };
 
       console.log(`Prediction: Calculated Building Mode EF details. Current EF: ${efDetails.currentEF}, Trend: ${efDetails.efTrendPercent}%`);
@@ -222,7 +222,7 @@ export async function refreshPredictionData() {
         previousPrediction, 
         upcomingRaces,
         trainingMode,
-        efDetails
+        efDetails || undefined
       );
     } catch (e: any) {
       console.error("Prediction Error: Gemini generation failed", e.message);

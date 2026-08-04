@@ -191,7 +191,16 @@ export default function WeeklyStats() {
         workouts.forEach(w => {
           const date = w.date?.toDate ? w.date.toDate() : new Date(w.date);
           const monday = getMonday(date);
-          if (!weeklyMap[monday]) weeklyMap[monday] = { weekStart: monday, completedDistance: 0, plannedDistance: 0, workouts: 0 };
+          if (!weeklyMap[monday]) {
+            weeklyMap[monday] = { 
+              weekStart: monday, 
+              completedDistance: 0, 
+              plannedDistance: 0, 
+              workouts: 0,
+              efSum: 0,
+              efCount: 0
+            };
+          }
           weeklyMap[monday].workouts += 1;
         });
 
