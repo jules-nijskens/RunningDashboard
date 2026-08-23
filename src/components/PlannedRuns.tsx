@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, setDoc, where } from 'firebase/firestore';
-import { db, auth } from '@/lib/firebase';
+import { db, auth, googleProvider } from '@/lib/firebase';
 import ReactMarkdown from 'react-markdown';
 import { Run, Workout } from '@/types/run';
 
@@ -84,7 +84,7 @@ const getLocalDateKey = (date: Date) => {
 
 // Parser helper moved to top and typed strictly
 const parseRunnaEvent = (event: CalendarEvent) => {
-  const summary = event.summary.replace(/🏃/g, '').trim();
+  const summary = (event.summary || '').replace(/🏃/g, '').trim();
   let desc = event.description ? event.description.replace(/<[^>]*>?/gm, '') : '';
 
   if (desc.includes('📲')) {
@@ -265,34 +265,34 @@ export default function PlannedRuns() {
 
   // 3. Fetch past gym workouts & custom events
   useEffect(() => {
-    const fetchWorkoutsAndEvents = async () => {
-      try {
-        const token = await auth.currentUser?.getIdToken();
-        if (!token) return;
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        try {
+          const token = await user.getIdToken();
+          
+          // Workouts
+          const wRes = await fetch('/api/workouts', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (wRes.ok) {
+            const wData = await wRes.json();
+            setPastWorkouts(wData.workouts || []);
+          }
 
-        // Workouts
-        const wRes = await fetch('/api/workouts', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (wRes.ok) {
-          const wData = await wRes.json();
-          setPastWorkouts(wData.workouts || []);
+          // Custom events
+          const ceRes = await fetch('/api/custom-events', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (ceRes.ok) {
+            const ceData = await ceRes.json();
+            setCustomEvents(ceData.events || []);
+          }
+        } catch (err) {
+          console.error("Error fetching workouts or events:", err);
         }
-
-        // Custom events
-        const ceRes = await fetch('/api/custom-events', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (ceRes.ok) {
-          const ceData = await ceRes.json();
-          setCustomEvents(ceData.events || []);
-        }
-      } catch (err) {
-        console.error("Error fetching workouts or events:", err);
       }
-    };
-
-    fetchWorkoutsAndEvents();
+    });
+    return () => unsubscribe();
   }, []);
 
   // 4. Fetch weather and planned runs when coachingMode changes
@@ -458,10 +458,12 @@ export default function PlannedRuns() {
     setSyncStatus(null);
 
     try {
-      const startOfToday = new Date();
-      startOfToday.setHours(0, 0, 0, 0);
+      const ninetyDaysAgo = new Date();
+      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      ninetyDaysAgo.setHours(0, 0, 0, 0);
       
-      const listUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?timeMin=${encodeURIComponent(startOfToday.toISOString())}&singleEvents=true&maxResults=250`;
+      // Query calendar from 90 days ago to clean up any past/future syncs
+      const listUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?timeMin=${encodeURIComponent(ninetyDaysAgo.toISOString())}&singleEvents=true&maxResults=250`;
       const listRes = await fetch(listUrl, { headers: { 'Authorization': `Bearer ${token}` } });
 
       if (listRes.ok) {
@@ -484,8 +486,14 @@ export default function PlannedRuns() {
         }
       }
 
+      const todayStr = new Date().toISOString().split('T')[0];
       let successCount = 0;
       for (const item of items) {
+        // Only sync plans for today and the future
+        if (item.date < todayStr) {
+          continue;
+        }
+
         const dateStr = item.date;
         const timeStr = item.startTime || '07:15';
         const startDateTime = new Date(`${dateStr}T${timeStr}:00`);
@@ -498,10 +506,10 @@ export default function PlannedRuns() {
           end: { dateTime: endDateTime.toISOString() },
           extendedProperties: { private: { source: 'gemini' } }
         };
-
+        
         const pushRes = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`, {
           method: 'POST',
-          headers: { 
+          headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           },
@@ -516,11 +524,27 @@ export default function PlannedRuns() {
         text: `Successfully synced ${successCount} workouts to your calendar!` 
       });
     } catch (err) {
-      console.error("Sync Error:", err);
+      console.error(err);
       setSyncStatus({ type: 'error', text: 'Failed to sync with Google Calendar.' });
     } finally {
       setIsSyncing(false);
       setTimeout(() => setSyncStatus(null), 5000);
+    }
+  };
+
+  const handleReauthorize = async () => {
+    try {
+      const { signInWithPopup, GoogleAuthProvider } = await import('firebase/auth');
+      const result = await signInWithPopup(auth, googleProvider);
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential?.accessToken) {
+        sessionStorage.setItem('google_calendar_token', credential.accessToken);
+        setError(null);
+        window.location.reload();
+      }
+    } catch (err) {
+      console.error("Reauthorization failed:", err);
+      alert("Failed to reauthorize Google Calendar access.");
     }
   };
 
@@ -1040,10 +1064,7 @@ export default function PlannedRuns() {
             <p><strong>Calendar Sync Paused:</strong> {error}</p>
           </div>
           <button 
-            onClick={() => {
-              sessionStorage.removeItem('google_calendar_token');
-              window.location.reload();
-            }}
+            onClick={handleReauthorize}
             className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-black uppercase tracking-widest text-[9px] rounded-lg transition-colors shadow-sm"
           >
             Reauthorize

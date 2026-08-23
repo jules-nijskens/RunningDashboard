@@ -112,23 +112,28 @@ export default function WeeklyStats() {
         let plannedItems: { date: string, distance: number }[] = [];
 
         if (coachingMode === 'runna') {
-          // Google Calendar
-          const token = sessionStorage.getItem('google_calendar_token');
-          const calendarId = process.env.NEXT_PUBLIC_TRAINING_CALENDAR_ID;
-          if (token && calendarId) {
-            const timeMin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-            const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?timeMin=${encodeURIComponent(timeMin)}&singleEvents=true&orderBy=startTime&maxResults=50`;
-            const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
-            if (res.ok) {
-              const json = await res.json();
-              const events = json.items || [];
-              plannedItems = events.map((e: any) => {
-                const dateStr = e.start.dateTime || e.start.date;
-                const distMatch = e.summary.match(/(\d+[.,]?\d*)\s*km/i);
-                const dist = distMatch ? parseFloat(distMatch[1].replace(',', '.')) : 0;
-                return { date: dateStr, distance: dist };
-              });
+          try {
+            // Google Calendar
+            const token = sessionStorage.getItem('google_calendar_token');
+            const calendarId = process.env.NEXT_PUBLIC_TRAINING_CALENDAR_ID;
+            if (token && calendarId) {
+              const timeMin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+              const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?timeMin=${encodeURIComponent(timeMin)}&singleEvents=true&orderBy=startTime&maxResults=50`;
+              const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+              if (res.ok) {
+                const json = await res.json();
+                const events = json.items || [];
+                plannedItems = events.map((e: any) => {
+                  const dateStr = e.start.dateTime || e.start.date;
+                  const summary = e.summary || '';
+                  const distMatch = summary.match(/(\d+[.,]?\d*)\s*km/i);
+                  const dist = distMatch ? parseFloat(distMatch[1].replace(',', '.')) : 0;
+                  return { date: dateStr, distance: dist };
+                });
+              }
             }
+          } catch (calErr) {
+            console.error("WeeklyStats: Error fetching Google Calendar events:", calErr);
           }
         } else {
           // Gemini Mode
