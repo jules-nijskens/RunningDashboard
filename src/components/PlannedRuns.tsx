@@ -17,6 +17,9 @@ interface CalendarEvent {
   extendedProperties?: {
     private?: {
       source?: string;
+      completed?: string;
+      runId?: string;
+      [key: string]: string | undefined;
     };
   };
 }
@@ -470,6 +473,10 @@ export default function PlannedRuns() {
         const listData = await listRes.json();
         const events: CalendarEvent[] = listData.items || [];
         const toDelete = events.filter((event: CalendarEvent) => {
+          const isCompleted = event.extendedProperties?.private?.source === 'runningdashboard-completed' || 
+                              event.extendedProperties?.private?.completed === 'true';
+          if (isCompleted) return false;
+
           const summary = event.summary || '';
           const isGemini = event.extendedProperties?.private?.source === 'gemini';
           const isRunEvent = summary.includes('🏃') || summary.includes('•');
@@ -1265,8 +1272,9 @@ export default function PlannedRuns() {
                             if (run.id) window.location.href = `/runs/${run.id}`;
                           }}
                           className="px-2 py-1 text-xs font-bold bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-lg truncate flex items-center gap-1 hover:bg-emerald-100 transition-colors shadow-sm"
+                          title={run.emojis && run.emojis.length > 0 ? `${run.emojis.join(' ')} ${run.runType} • ${run.distance}km` : `${run.runType} • ${run.distance}km`}
                         >
-                          <span>🏃</span>
+                          <span>{run.emojis && run.emojis.length > 0 ? `${run.emojis.join('')} ` : '🏃'}</span>
                           <span className="truncate">{run.runType} • {run.distance}k</span>
                         </div>
                       ))}
@@ -1464,7 +1472,7 @@ export default function PlannedRuns() {
                           className="p-3 text-sm bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-xl flex items-center justify-between"
                         >
                           <div className="flex items-center gap-2">
-                            <span>🏃</span>
+                            <span>{run.emojis && run.emojis.length > 0 ? `${run.emojis.join(' ')} ` : '🏃'}</span>
                             <span className="font-black uppercase tracking-tight">{run.runType} Run</span>
                           </div>
                           <span className="font-bold">{run.distance}km</span>

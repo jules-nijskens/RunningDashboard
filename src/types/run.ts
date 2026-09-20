@@ -23,6 +23,7 @@ export interface Run {
   distance: number;
   duration: string;
   averagePace: string;
+  emojis?: string[];
   calories?: number;
   averageHeartRate?: number;
   maxHeartRate?: number;

@@ -8,6 +8,23 @@ import { Run, RunType, Lap } from '@/types/run';
 
 const RUN_TYPES: RunType[] = ['Easy', 'Long Run', 'Tempo', 'Interval', 'Race', 'Time Trial'];
 
+const PRESET_EMOJIS = [
+  '🟢', '🟡', '🔴', '🔥', '⚡', '🚀', '☀️', '😃', '😎', '🤩', '🥳',
+  '🥵', '🥶', '🌧️', '😴', '🤢', '🤕', '💩',
+  '🐢', '🐇', '🌲', '⛰️', '🏆', '👟', '🎯', '💯'
+];
+
+function parseDurationToSeconds(duration: string): number {
+  if (!duration) return 0;
+  const parts = duration.split(':').map(Number);
+  if (parts.length === 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  } else if (parts.length === 2) {
+    return parts[0] * 60 + parts[1];
+  }
+  return 0;
+}
+
 interface GarminCSVRow {
   'Laps'?: string;
   'Date'?: string;
@@ -44,6 +61,122 @@ export default function UploadForm() {
   const [coachingMode, setCoachingMode] = useState<'runna' | 'gemini'>('runna');
   const [shoes, setShoes] = useState<{ id: string; name: string }[]>([]);
   const [selectedShoeId, setSelectedShoeId] = useState<string>('');
+  const [selectedEmojis, setSelectedEmojis] = useState<string[]>([]);
+  const [customEmojiInput, setCustomEmojiInput] = useState<string>('');
+
+  const handleToggleEmoji = (emoji: string) => {
+    setSelectedEmojis(prev =>
+      prev.includes(emoji) ? prev.filter(e => e !== emoji) : [...prev, emoji]
+    );
+  };
+
+  const handleAddCustomEmoji = () => {
+    const trimmed = customEmojiInput.trim();
+    if (!trimmed) return;
+    
+    const segmenter = typeof Intl !== 'undefined' && 'Segmenter' in Intl 
+      ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) 
+      : null;
+    const items = segmenter 
+      ? Array.from(segmenter.segment(trimmed)).map(s => s.segment.trim()).filter(Boolean)
+      : Array.from(trimmed).filter(c => c.trim());
+
+    setSelectedEmojis(prev => {
+      const next = [...prev];
+      for (const item of items) {
+        if (!next.includes(item)) next.push(item);
+      }
+      return next;
+    });
+    setCustomEmojiInput('');
+  };
+
+  const syncRunToGoogleCalendar = async (run: Run, emojis: string[]) => {
+    const token = sessionStorage.getItem('google_calendar_token');
+    const calendarId = process.env.NEXT_PUBLIC_TRAINING_CALENDAR_ID;
+    if (!token || !calendarId) return;
+
+    try {
+      const emojiPrefix = emojis.length > 0 ? `${emojis.join(' ')} ` : '';
+      
+      const startOfDay = new Date(`${run.date}T00:00:00`);
+      const endOfDay = new Date(`${run.date}T23:59:59`);
+      
+      const listUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?timeMin=${encodeURIComponent(startOfDay.toISOString())}&timeMax=${encodeURIComponent(endOfDay.toISOString())}&singleEvents=true`;
+      const res = await fetch(listUrl, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      let existingEvent: any = null;
+      if (res.ok) {
+        const data = await res.json();
+        const events: any[] = data.items || [];
+        existingEvent = events.find((e: any) => {
+          const sum = e.summary || '';
+          return sum.includes('🏃') || sum.includes('Run') || e.extendedProperties?.private?.source === 'gemini' || e.extendedProperties?.private?.source === 'runningdashboard';
+        }) || events[0];
+      }
+
+      if (existingEvent) {
+        const cleanedSummary = (existingEvent.summary || '')
+          .replace(/^[\p{Emoji}\s]+/u, '')
+          .trim();
+        const targetSummary = `${emojiPrefix}🏃 ${cleanedSummary.replace(/🏃/g, '').trim() || `${run.runType} Run • ${run.distance}km`}`.trim();
+        
+        const patchBody = {
+          summary: targetSummary,
+          description: `${run.summary ? `Notes: ${run.summary}\n\n` : ''}${run.coachReviewShort ? `Coach Review: ${run.coachReviewShort}\n\n` : ''}${existingEvent.description ? `Planned:\n${existingEvent.description}` : ''}`.trim(),
+          extendedProperties: {
+            private: {
+              ...existingEvent.extendedProperties?.private,
+              source: 'runningdashboard-completed',
+              completed: 'true',
+              runId: run.id || ''
+            }
+          }
+        };
+
+        await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(existingEvent.id)}`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(patchBody)
+        });
+      } else {
+        const timeStr = run.time || '09:00';
+        const startDateTime = new Date(`${run.date}T${timeStr}:00`);
+        const durationSeconds = parseDurationToSeconds(run.duration || '');
+        const endDateTime = new Date(startDateTime.getTime() + (durationSeconds > 0 ? durationSeconds * 1000 : 3600 * 1000));
+
+        const newEvent = {
+          summary: `${emojiPrefix}🏃 ${run.runType} Run • ${run.distance}km`.trim(),
+          description: `${run.summary ? `Notes: ${run.summary}\n\n` : ''}${run.coachReviewShort ? `Coach Review: ${run.coachReviewShort}` : ''}`.trim(),
+          start: { dateTime: startDateTime.toISOString() },
+          end: { dateTime: endDateTime.toISOString() },
+          extendedProperties: {
+            private: {
+              source: 'runningdashboard-completed',
+              completed: 'true',
+              runId: run.id || ''
+            }
+          }
+        };
+
+        await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(newEvent)
+        });
+      }
+    } catch (calError) {
+      console.error("Failed to sync completed run with Google Calendar:", calError);
+    }
+  };
 
   const determineDefaultShoe = (type: RunType, shoesList: { id: string; name: string }[]) => {
     const kayano = shoesList.find(s => s.name.toLowerCase().includes('kayano'));
@@ -186,6 +319,7 @@ export default function UploadForm() {
       const newRun: Run = {
         ...parsedRunData,
         runType,
+        emojis: selectedEmojis.length > 0 ? selectedEmojis : undefined,
         summary,
         location,
         userGoal,
@@ -224,7 +358,15 @@ export default function UploadForm() {
         console.error("AI Review failed:", aiError);
       }
 
-      await addDoc(collection(db, 'runs'), newRun);
+      const docRef = await addDoc(collection(db, 'runs'), newRun);
+      newRun.id = docRef.id;
+
+      // Sync run and emojis to Google Calendar
+      try {
+        await syncRunToGoogleCalendar(newRun, selectedEmojis);
+      } catch (calErr) {
+        console.error("Google Calendar sync failed:", calErr);
+      }
       
       if (selectedShoeId && newRun.distance) {
         try {
@@ -266,6 +408,8 @@ export default function UploadForm() {
       setFile(null);
       setParsedRunData(null);
       setSummary('');
+      setSelectedEmojis([]);
+      setCustomEmojiInput('');
       
       const fileInput = document.getElementById('file-upload') as HTMLInputElement;
       if (fileInput) fileInput.value = '';
@@ -382,6 +526,93 @@ export default function UploadForm() {
           <div className="flex justify-between mt-2 px-1">
             <span className="text-[10px] font-bold text-blue-500 uppercase">🚲 Biking Path</span>
             <span className="text-[10px] font-bold text-green-600 uppercase">🌲 Forest Trail</span>
+          </div>
+        </div>
+
+        {/* Emoji Selector */}
+        <div className="bg-amber-50/70 p-5 rounded-xl border border-amber-200 shadow-sm">
+          <div className="flex justify-between items-center mb-3">
+            <div>
+              <label className="block text-xs font-black text-amber-900 uppercase tracking-widest">
+                Run Feeling & Emojis
+              </label>
+              <p className="text-[11px] font-bold text-amber-750">Select 1 or more emojis to tag this run</p>
+            </div>
+            {selectedEmojis.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelectedEmojis([])}
+                className="text-[10px] font-black uppercase text-amber-800 hover:text-amber-950 px-2 py-1 bg-amber-200/60 hover:bg-amber-200 rounded-lg transition-colors cursor-pointer"
+              >
+                Clear All
+              </button>
+            )}
+          </div>
+
+          {/* Preset Buttons Grid */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            {PRESET_EMOJIS.map((emoji) => {
+              const isSelected = selectedEmojis.includes(emoji);
+              return (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => handleToggleEmoji(emoji)}
+                  className={`text-xl p-2 rounded-xl transition-all cursor-pointer select-none transform active:scale-95 ${
+                    isSelected
+                      ? 'bg-amber-500 text-white shadow-md ring-2 ring-amber-600 scale-105'
+                      : 'bg-white text-gray-800 hover:bg-amber-100/70 border border-amber-100 shadow-xs'
+                  }`}
+                  title={emoji}
+                >
+                  {emoji}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Custom Emoji Input & Selected Badges */}
+          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between pt-3 border-t border-amber-200/60">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <input
+                type="text"
+                value={customEmojiInput}
+                onChange={(e) => setCustomEmojiInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddCustomEmoji();
+                  }
+                }}
+                placeholder="Custom emoji (e.g. 🎯)"
+                className="p-2 border border-amber-300 rounded-lg text-sm bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-400 w-44"
+              />
+              <button
+                type="button"
+                onClick={handleAddCustomEmoji}
+                disabled={!customEmojiInput.trim()}
+                className="px-3 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-black rounded-lg transition-colors cursor-pointer"
+              >
+                Add
+              </button>
+            </div>
+
+            {selectedEmojis.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 mr-1">Selected:</span>
+                {selectedEmojis.map((emoji) => (
+                  <span
+                    key={emoji}
+                    onClick={() => handleToggleEmoji(emoji)}
+                    className="inline-flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg border border-amber-300 text-base shadow-xs font-bold text-gray-800 cursor-pointer hover:bg-red-50 hover:border-red-200 group transition-all"
+                    title="Click to remove"
+                  >
+                    <span>{emoji}</span>
+                    <span className="text-xs text-gray-400 group-hover:text-red-500 font-black ml-0.5">×</span>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

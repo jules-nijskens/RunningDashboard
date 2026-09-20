@@ -98,7 +98,14 @@ export default function RunDetail() {
           }`}>
             <div className="flex justify-between items-center">
               <div>
-                <span className="text-sm font-bold uppercase tracking-widest opacity-80">{run.runType} Run</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold uppercase tracking-widest opacity-80">{run.runType} Run</span>
+                  {run.emojis && run.emojis.length > 0 && (
+                    <span className="text-lg bg-white/20 px-2 py-0.5 rounded-lg backdrop-blur-xs" title="Feeling">
+                      {run.emojis.join(' ')}
+                    </span>
+                  )}
+                </div>
                 <h1 className="text-4xl font-black mt-1">{run.distance} km</h1>
               </div>
               <div className="text-right">

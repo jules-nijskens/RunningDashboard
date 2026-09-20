@@ -192,16 +192,23 @@ export default function RunList() {
                       : run.date}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <span className={`px-3 py-1 inline-flex text-[10px] font-black uppercase rounded-full ${
-                      run.runType === 'Easy' ? 'bg-green-100 text-green-700' :
-                      run.runType === 'Long Run' ? 'bg-blue-100 text-blue-700' :
-                      run.runType === 'Tempo' ? 'bg-purple-100 text-purple-700' :
-                      run.runType === 'Interval' ? 'bg-orange-100 text-orange-700' :
-                      run.runType === 'Race' ? 'bg-red-200 text-red-900 border border-red-300' :
-                      'bg-gray-100 text-gray-700'
-                    }`}>
-                      {run.runType}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {run.emojis && run.emojis.length > 0 && (
+                        <span className="text-base tracking-normal select-none" title={`Feeling: ${run.emojis.join(' ')}`}>
+                          {run.emojis.join(' ')}
+                        </span>
+                      )}
+                      <span className={`px-3 py-1 inline-flex text-[10px] font-black uppercase rounded-full ${
+                        run.runType === 'Easy' ? 'bg-green-100 text-green-700' :
+                        run.runType === 'Long Run' ? 'bg-blue-100 text-blue-700' :
+                        run.runType === 'Tempo' ? 'bg-purple-100 text-purple-700' :
+                        run.runType === 'Interval' ? 'bg-orange-100 text-orange-700' :
+                        run.runType === 'Race' ? 'bg-red-200 text-red-900 border border-red-300' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>
+                        {run.runType}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-black">{run.distance} km</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium">{run.averagePace} /km</td>
