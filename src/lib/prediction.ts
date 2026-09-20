@@ -60,6 +60,15 @@ function calculateRunEF(run: Run): number | null {
   return parseFloat((speedMPerMin / run.averageHeartRate).toFixed(3));
 }
 
+function getDaysAgoDateString(baseDate: Date, daysAgo: number): string {
+  const d = new Date(baseDate);
+  d.setDate(d.getDate() - daysAgo);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export async function refreshPredictionData() {
   console.log("Prediction: refreshPredictionData called");
   let userStats: any = {};
@@ -164,21 +173,13 @@ export async function refreshPredictionData() {
         .filter(r => r.ef !== null);
 
       const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayMs = today.getTime();
-      const MS_IN_DAY = 24 * 60 * 60 * 1000;
-      const sevenDaysAgoMs = todayMs - 7 * MS_IN_DAY;
-      const fourteenDaysAgoMs = todayMs - 14 * MS_IN_DAY;
+      const todayStr = getDaysAgoDateString(today, 0);
+      const last7dStartStr = getDaysAgoDateString(today, 6); // 7-day window: [today-6, today]
+      const preceding7dEndStr = getDaysAgoDateString(today, 7); // Prior 7-day window: [today-13, today-7]
+      const preceding7dStartStr = getDaysAgoDateString(today, 13);
 
-      const runsLast7Days = easyRunsWithEF.filter(r => {
-        const runMs = new Date(r.date + 'T00:00:00').getTime();
-        return runMs >= sevenDaysAgoMs && runMs <= todayMs + MS_IN_DAY;
-      });
-
-      const runsPreceding7Days = easyRunsWithEF.filter(r => {
-        const runMs = new Date(r.date + 'T00:00:00').getTime();
-        return runMs >= fourteenDaysAgoMs && runMs < sevenDaysAgoMs;
-      });
+      const runsLast7Days = easyRunsWithEF.filter(r => r.date >= last7dStartStr && r.date <= todayStr);
+      const runsPreceding7Days = easyRunsWithEF.filter(r => r.date >= preceding7dStartStr && r.date <= preceding7dEndStr);
 
       const avgEFLast7Days = runsLast7Days.length > 0
         ? runsLast7Days.reduce((acc, curr) => acc + curr.ef!, 0) / runsLast7Days.length
