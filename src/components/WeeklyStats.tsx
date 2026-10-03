@@ -263,8 +263,8 @@ export default function WeeklyStats() {
 
           finalData.push({
             weekStart: iterStr,
-            completedDistance: completed,
-            plannedDistance: planned,
+            completedDistance: parseFloat(completed.toFixed(1)),
+            plannedDistance: parseFloat(planned.toFixed(1)),
             workouts: workouts,
             weeklyEF: weeklyEF,
             labelHeight: 0.1, // Small height for ghost bar in stack
@@ -364,6 +364,12 @@ export default function WeeklyStats() {
               }}
               labelStyle={{ fontWeight: '900', textTransform: 'uppercase', fontSize: '10px', marginBottom: '4px', color: '#111827' }}
               labelFormatter={(label) => `Week of ${new Date(label + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'long' })}`}
+              formatter={(value: any, name: any) => {
+                if (name === 'Done') return [`${Number(value).toFixed(1)} km`, 'Done'];
+                if (name === 'Planned') return [`${Number(value).toFixed(1)} km`, 'Planned'];
+                if (name === 'Efficiency (EF)') return [value, 'Efficiency (EF)'];
+                return [value, name];
+              }}
             />
             <Bar 
               dataKey="completedDistance" 
@@ -388,6 +394,7 @@ export default function WeeklyStats() {
               fill="transparent" 
               barSize={24}
               isAnimationActive={false}
+              tooltipType="none"
             >
               <LabelList 
                 dataKey="workouts" 
