@@ -54,6 +54,8 @@ env:
     value: "52.7537"
   - variable: RUN_LON
     value: "13.2367"
+  - variable: GARMIN_API_KEY
+    secret: GARMIN_API_KEY
   - variable: GEMINI_API_KEY
     secret: GEMINI_API_KEY
   - variable: WORKOUTS_PRIVATE_KEY
