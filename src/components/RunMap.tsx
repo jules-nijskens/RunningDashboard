@@ -31,11 +31,12 @@ export default function RunMap({ coordinates }: RunMapProps) {
 
     mapInstanceRef.current = map;
 
-    // Use a clean, premium light map tile layer (CartoDB Positron)
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    // CARTO Voyager raster tiles (requires an API key; set NEXT_PUBLIC_CARTO_API_KEY)
+    const cartoKey = process.env.NEXT_PUBLIC_CARTO_API_KEY;
+    L.tileLayer(`https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png${cartoKey ? `?key=${cartoKey}` : ''}`, {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: 'abcd',
-      maxZoom: 20
+      maxZoom: 20,
+      detectRetina: true
     }).addTo(map);
 
     // Draw route polyline

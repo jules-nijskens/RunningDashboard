@@ -48,6 +48,8 @@ env:
   - variable: NEXT_PUBLIC_TRAINING_CALENDAR_ID
     value: "127ebc0906c07fd266c05736c7c1dbc93e5b85fe0214f9cf086e769ac4ecb6f2@group.\
       calendar.google.com"
+  - variable: NEXT_PUBLIC_CARTO_API_KEY
+    value: "cb1_4xmu_1_3be677d33c8c670be0794738"
   - variable: RUN_LAT
     value: "52.7537"
   - variable: RUN_LON
