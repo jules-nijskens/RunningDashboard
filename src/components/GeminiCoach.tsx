@@ -195,9 +195,15 @@ export default function GeminiCoach({ activeRaceId }: { activeRaceId?: string })
           messages: finalMessages
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Chat error:', error);
-      const errorMessage: Message = { role: 'model', content: "Sorry, I had a bit of a cramp. Can you try saying that again?" };
+      let errorText = "Sorry, I had a bit of a cramp. Can you try saying that again?";
+      if (error?.message?.includes('402') || error?.message?.toLowerCase()?.includes('prepayment')) {
+        errorText = "⚠️ AI Coach unavailable: Google Gemini prepayment credits are depleted. Please top up credits in Google AI Studio or use a Free Tier API key.";
+      } else if (error?.message?.includes('429') || error?.message?.toLowerCase()?.includes('resource exhausted')) {
+        errorText = "⚠️ AI Coach rate limit reached. Please wait a moment before sending another message.";
+      }
+      const errorMessage: Message = { role: 'model', content: errorText };
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);

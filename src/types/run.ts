@@ -15,6 +15,17 @@ export interface Lap {
   avgTemperature?: number;
 }
 
+export interface WeatherInfo {
+  tempAvg: number;
+  tempMin: number;
+  tempMax: number;
+  humidityAvg: number;
+  rainMm: number;
+  windAvg: number;
+  /** WMO weather code at the dominant hour of the run */
+  code?: number;
+}
+
 export interface Run {
   id?: string;
   date: string;
@@ -37,7 +48,9 @@ export interface Run {
   descent?: number;
   timestamp: number;
   time?: string;
+  garminActivityId?: string;
   weather?: string;
+  weatherInfo?: WeatherInfo;
   location?: string;
   shoeId?: string;
   shoeName?: string;

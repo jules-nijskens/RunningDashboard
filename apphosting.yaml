@@ -4,6 +4,8 @@
 # Reference secrets from Secret Manager
 # Use `firebase apphosting:secrets:set NAME` to add them in production
 secrets:
+  - variable: GARMIN_API_KEY
+    secret: GARMIN_API_KEY
   - variable: GEMINI_API_KEY
     secret: GEMINI_API_KEY
   - variable: WORKOUTS_PRIVATE_KEY

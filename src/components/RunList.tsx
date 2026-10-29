@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, deleteDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Run } from '@/types/run';
+import { weatherEmoji } from '@/lib/weather';
 import { useRouter } from 'next/navigation';
 
 function parseDurationToSeconds(duration: string): number {
@@ -174,6 +175,7 @@ export default function RunList() {
                 <th className="px-6 py-4 text-left text-[10px] font-black text-gray-500 uppercase tracking-widest">Duration</th>
                 <th className="px-6 py-4 text-left text-[10px] font-black text-gray-500 uppercase tracking-widest">Avg HR</th>
                 <th className="px-6 py-4 text-left text-[10px] font-black text-gray-500 uppercase tracking-widest">Cadence</th>
+                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-500 uppercase tracking-widest">Weather</th>
                 <th className="px-6 py-4 text-left text-[10px] font-black text-gray-500 uppercase tracking-widest">EF</th>
                 <th className="px-6 py-4 text-left text-[10px] font-black text-gray-500 uppercase tracking-widest">Coach Review</th>
                 <th className="px-6 py-4 text-right text-[10px] font-black text-gray-500 uppercase tracking-widest">Actions</th>
@@ -215,6 +217,14 @@ export default function RunList() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium">{run.duration}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium">{run.averageHeartRate} bpm</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium">{run.averageCadence} spm</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-medium">
+                    {run.weatherInfo ? (
+                      <span title={run.weather}>
+                        {weatherEmoji(run.weatherInfo.code)} {Math.round(run.weatherInfo.tempAvg)}°
+                        <span className="text-[10px] text-gray-400 ml-1">💨{Math.round(run.weatherInfo.windAvg)}</span>
+                      </span>
+                    ) : '--'}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-emerald-600 font-black">{calculateRunEF(run) || '--'}</td>
                   <td className="px-6 py-4 text-sm relative group/insight">
                     <div className="flex items-center gap-2 text-blue-600 bg-blue-50 px-3 py-1 rounded-full w-fit font-black text-[10px] uppercase tracking-widest transition-all group-hover/insight:bg-blue-600 group-hover/insight:text-white cursor-help">

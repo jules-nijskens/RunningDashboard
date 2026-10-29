@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { doc, onSnapshot, setDoc, collection, addDoc, deleteDoc, updateDoc, query, orderBy } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
 import { Shoe } from '@/types/run';
 import { Trash2, Plus, AlertTriangle, Check, Edit2, X, Trophy } from 'lucide-react';
 import Link from 'next/link';
@@ -59,6 +59,8 @@ export default function UserStats() {
   const [stats, setStats] = useState<UserStatsData | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<UserStatsData | null>(null);
+  const [garminSyncing, setGarminSyncing] = useState(false);
+  const [garminSyncMsg, setGarminSyncMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Shoe Locker State Hooks
   const [shoes, setShoes] = useState<Shoe[]>([]);
@@ -277,6 +279,47 @@ export default function UserStats() {
     if (editForm && editForm.goals.length > 1) {
       const newGoals = editForm.goals.filter((_, i) => i !== index);
       setEditForm({ ...editForm, goals: newGoals });
+    }
+  };
+
+  const handleGarminSync = async () => {
+    if (!stats) return;
+    setGarminSyncing(true);
+    setGarminSyncMsg(null);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch('/api/garmin/health', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Garmin sync failed.');
+
+      const now = new Date().toISOString();
+      const updated: string[] = [];
+      const next: UserStatsData = { ...stats };
+
+      if (Object.keys(data.health || {}).length > 0) {
+        next.health = { ...stats.health!, ...data.health, lastUpdated: now };
+        await addDoc(collection(db, 'settings', 'user_stats', 'health_history'), { ...next.health, timestamp: now });
+        updated.push('health');
+      }
+      if (Object.keys(data.performance || {}).length > 0) {
+        next.performance = { ...stats.performance!, ...data.performance, lastUpdated: now };
+        await addDoc(collection(db, 'settings', 'user_stats', 'performance_history'), { ...next.performance, timestamp: now });
+        updated.push('performance');
+      }
+
+      if (updated.length > 0) {
+        await setDoc(doc(db, 'settings', 'user_stats'), next);
+        setGarminSyncMsg({ type: 'success', text: `Synced ${updated.join(' & ')} from Garmin${data.errors?.length ? ` (${data.errors.length} metric(s) unavailable)` : ''}.` });
+      } else {
+        setGarminSyncMsg({ type: 'error', text: `Garmin returned no data. ${(data.errors || []).join(' | ')}` });
+      }
+    } catch (err: any) {
+      setGarminSyncMsg({ type: 'error', text: err.message || 'Garmin sync failed.' });
+    } finally {
+      setGarminSyncing(false);
     }
   };
 
@@ -595,6 +638,21 @@ export default function UserStats() {
   }
 
   return (
+    <>
+    <div className="flex items-center justify-end gap-3 mb-2">
+      {garminSyncMsg && (
+        <span className={`text-[11px] font-bold ${garminSyncMsg.type === 'success' ? 'text-green-700' : 'text-red-600'}`}>
+          {garminSyncMsg.text}
+        </span>
+      )}
+      <button
+        onClick={handleGarminSync}
+        disabled={garminSyncing}
+        className="px-3 py-1.5 text-[11px] font-black uppercase tracking-wider bg-white border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-all active:scale-95"
+      >
+        {garminSyncing ? 'Syncing...' : '⌚ Sync Garmin'}
+      </button>
+    </div>
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
       {/* Card 1: Goals & Status */}
       <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 relative group flex flex-col justify-between hover:shadow-md transition-shadow">
@@ -773,5 +831,6 @@ export default function UserStats() {
         </div>
       </div>
     </div>
+    </>
   );
 }

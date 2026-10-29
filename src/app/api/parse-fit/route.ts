@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { verifyAuth } from '@/lib/auth-server';
+import { downloadFit } from '@/lib/garmin';
 import FitParser from 'fit-file-parser';
 import { Run, Lap } from '@/types/run';
 
@@ -28,20 +29,48 @@ function parseSemicircles(val: number | undefined): number | undefined {
   return val;
 }
 
+async function reverseGeocode(lat: number, lon: number): Promise<string | undefined> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10&lat=${lat}&lon=${lon}`,
+      {
+        headers: { 'User-Agent': 'RunningDashboard/1.0 (personal use)' },
+        signal: AbortSignal.timeout(4000),
+      }
+    );
+    if (!res.ok) return undefined;
+    const data = await res.json();
+    const a = data.address || {};
+    const place = a.city || a.town || a.village || a.municipality || a.county;
+    const country = a.country_code ? String(a.country_code).toUpperCase() : a.country;
+    if (!place) return undefined;
+    return country ? `${place}, ${country}` : place;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function POST(request: Request) {
   try {
     // 1. Verify Auth
     await verifyAuth(request);
 
-    // 2. Extract FIT File
-    const formData = await request.formData();
-    const file = formData.get('file') as File;
-    if (!file) {
-      return NextResponse.json({ error: 'No file uploaded.' }, { status: 400 });
+    // 2. Extract FIT File (either uploaded, or pulled from Garmin via activity id)
+    let buffer: Buffer;
+    if ((request.headers.get('content-type') || '').includes('application/json')) {
+      const { garminActivityId } = await request.json();
+      if (!garminActivityId) {
+        return NextResponse.json({ error: 'No Garmin activity id provided.' }, { status: 400 });
+      }
+      buffer = await downloadFit(String(garminActivityId));
+    } else {
+      const formData = await request.formData();
+      const file = formData.get('file') as File;
+      if (!file) {
+        return NextResponse.json({ error: 'No file uploaded.' }, { status: 400 });
+      }
+      buffer = Buffer.from(await file.arrayBuffer());
     }
-
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
 
     // 3. Parse FIT File
     const fitParser = new FitParser({
@@ -129,8 +158,14 @@ export async function POST(request: Request) {
     const formattedDate = startTimeDate.toISOString().split('T')[0];
     const formattedTime = startTimeDate.toTimeString().split(' ')[0].substring(0, 5); // "HH:MM"
 
+    // Reverse-geocode the start point to a "City, CC" label (best effort).
+    const location = downsampledCoords.length > 0
+      ? await reverseGeocode(downsampledCoords[0].lat, downsampledCoords[0].lon)
+      : undefined;
+
     const runPayload: Partial<Run> = {
       date: formattedDate,
+      location,
       time: formattedTime,
       distance: distanceKm,
       duration: formatDuration(activeTimeS),

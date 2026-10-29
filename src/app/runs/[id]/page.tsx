@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Run } from '@/types/run';
+import { weatherEmoji } from '@/lib/weather';
 import { useParams, useRouter } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import dynamic from 'next/dynamic';
@@ -185,7 +186,18 @@ export default function RunDetail() {
               {run.weather && (
                 <div className="bg-gray-50 p-4 rounded-xl text-center">
                   <p className="text-gray-600 text-xs uppercase font-bold mb-1">Weather</p>
-                  <p className="text-sm font-bold text-gray-900">{run.weather}</p>
+                  {run.weatherInfo ? (
+                    <>
+                      <p className="text-2xl font-black text-sky-600">
+                        {weatherEmoji(run.weatherInfo.code)} {Math.round(run.weatherInfo.tempAvg)}°C
+                      </p>
+                      <p className="text-[11px] font-bold text-gray-500 mt-1">
+                        {Math.round(run.weatherInfo.tempMin)}–{Math.round(run.weatherInfo.tempMax)}° · 💧{run.weatherInfo.humidityAvg}% · 🌧 {run.weatherInfo.rainMm}mm · 💨 {Math.round(run.weatherInfo.windAvg)}km/h
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm font-bold text-gray-900">{run.weather}</p>
+                  )}
                 </div>
               )}
             </div>

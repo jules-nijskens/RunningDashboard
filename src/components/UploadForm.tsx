@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Papa from 'papaparse';
-import { collection, addDoc, doc, getDoc, onSnapshot, updateDoc, getDocs } from 'firebase/firestore';
+import { collection, addDoc, doc, getDoc, onSnapshot, updateDoc, getDocs, query, where } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { Run, RunType, Lap } from '@/types/run';
 
@@ -63,6 +63,9 @@ export default function UploadForm() {
   const [selectedShoeId, setSelectedShoeId] = useState<string>('');
   const [selectedEmojis, setSelectedEmojis] = useState<string[]>([]);
   const [customEmojiInput, setCustomEmojiInput] = useState<string>('');
+  const [garminActivities, setGarminActivities] = useState<{ id: string; name: string; startTime: string; distanceKm: number; durationSec: number }[]>([]);
+  const [garminLoading, setGarminLoading] = useState(false);
+  const [garminActivityId, setGarminActivityId] = useState<string | null>(null);
 
   const handleToggleEmoji = (emoji: string) => {
     setSelectedEmojis(prev =>
@@ -247,10 +250,64 @@ export default function UploadForm() {
     return [];
   };
 
+  const handleLoadGarminActivities = async () => {
+    setGarminLoading(true);
+    setMessage(null);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch('/api/garmin/activities', { headers: { 'Authorization': `Bearer ${token}` } });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load Garmin activities.');
+      setGarminActivities(data.activities || []);
+      if (!data.activities?.length) setMessage({ type: 'error', text: 'No recent runs found on Garmin.' });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to load Garmin activities.' });
+    } finally {
+      setGarminLoading(false);
+    }
+  };
+
+  const handleSelectGarminActivity = async (activityId: string) => {
+    setIsUploading(true);
+    setMessage(null);
+    try {
+      const existing = await getDocs(query(collection(db, 'runs'), where('garminActivityId', '==', activityId)));
+      if (!existing.empty) {
+        throw new Error('This Garmin activity has already been imported.');
+      }
+
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch('/api/parse-fit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ garminActivityId: activityId }),
+      });
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Failed to import Garmin activity.');
+      }
+      const parsed = await res.json() as Partial<Run>;
+      setFile(null);
+      const fileInput = document.getElementById('file-upload') as HTMLInputElement;
+      if (fileInput) fileInput.value = '';
+      setGarminActivityId(activityId);
+      setParsedRunData(parsed);
+      if (parsed.date) setRunDate(parsed.date);
+      if (parsed.time) setRunTime(parsed.time);
+      if (parsed.location) setLocation(parsed.location);
+      setMessage({ type: 'success', text: 'Garmin activity imported! Add your feedback below, then submit.' });
+    } catch (err: any) {
+      setMessage({ type: 'error', text: err.message || 'Failed to import Garmin activity.' });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
       setFile(selectedFile);
+      setGarminActivityId(null);
       setParsedRunData(null);
       setIsUploading(true);
       setMessage(null);
@@ -279,6 +336,7 @@ export default function UploadForm() {
         // Pre-populate date/time if available
         if (parsed.date) setRunDate(parsed.date);
         if (parsed.time) setRunTime(parsed.time);
+        if (parsed.location) setLocation(parsed.location);
 
         setMessage({ type: 'success', text: 'FIT file uploaded and parsed successfully!' });
       } catch (err: any) {
@@ -294,8 +352,8 @@ export default function UploadForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file || !parsedRunData) {
-      setMessage({ type: 'error', text: 'Please select a valid FIT file first.' });
+    if ((!file && !garminActivityId) || !parsedRunData) {
+      setMessage({ type: 'error', text: 'Please select a FIT file or import a Garmin activity first.' });
       return;
     }
 
@@ -318,6 +376,7 @@ export default function UploadForm() {
 
       const newRun: Run = {
         ...parsedRunData,
+        garminActivityId: garminActivityId || undefined,
         runType,
         emojis: selectedEmojis.length > 0 ? selectedEmojis : undefined,
         summary,
@@ -349,7 +408,9 @@ export default function UploadForm() {
           body: JSON.stringify({ ...newRun, upcomingRuns }),
         });
         if (reviewRes.ok) {
-          const { review } = await reviewRes.json();
+          const { review, weather, weatherInfo } = await reviewRes.json();
+          if (weather) newRun.weather = weather;
+          if (weatherInfo) newRun.weatherInfo = weatherInfo;
           newRun.coachReview = review.long;
           newRun.coachReviewShort = review.short;
           newRun.aiDescription = review.structure;
@@ -406,9 +467,10 @@ export default function UploadForm() {
         window.location.href = '/';
       }, 1500);
       setFile(null);
+      setGarminActivityId(null);
+      setGarminActivities([]);
       setParsedRunData(null);
       setSummary('');
-      setSelectedEmojis([]);
       setCustomEmojiInput('');
       
       const fileInput = document.getElementById('file-upload') as HTMLInputElement;
@@ -442,8 +504,60 @@ export default function UploadForm() {
                 file:bg-blue-600 file:text-white
                 hover:file:bg-blue-700 transition-all
                 cursor-pointer"
-              required
+              required={!garminActivityId}
             />
+            <div className="mt-4 pt-4 border-t border-blue-200">
+              <button
+                type="button"
+                onClick={handleLoadGarminActivities}
+                disabled={garminLoading || isUploading}
+                className="w-full py-2.5 px-4 bg-white border-2 border-blue-600 text-blue-700 hover:bg-blue-50 disabled:opacity-50 rounded-xl text-sm font-black transition-all active:scale-95"
+              >
+                {garminLoading ? 'Loading from Garmin...' : '⌚ Sync from Garmin'}
+              </button>
+              {garminActivityId && (
+                <p className="mt-2 text-[11px] font-bold text-green-700">✓ Garmin activity {garminActivityId} imported</p>
+              )}
+              {garminActivities.length > 0 && (
+                <ul className="mt-3 space-y-2 max-h-56 overflow-y-auto">
+                  {garminActivities.map((a) => {
+                    const mins = Math.floor(a.durationSec / 60);
+                    const secs = String(a.durationSec % 60).padStart(2, '0');
+                    const now = new Date();
+                    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                    const isToday = (a.startTime || '').slice(0, 10) === todayStr;
+                    return (
+                      <li key={a.id}>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectGarminActivity(a.id)}
+                          disabled={isUploading}
+                          className={`w-full text-left p-3 rounded-xl border-2 text-xs font-bold transition-all disabled:opacity-50 ${
+                            garminActivityId === a.id
+                              ? 'border-blue-600 bg-blue-100'
+                              : isToday
+                                ? 'border-green-500 bg-green-50 hover:border-green-600 shadow-md ring-2 ring-green-200'
+                                : 'border-gray-200 bg-white hover:border-blue-400'
+                          }`}
+                        >
+                          <span className="flex items-center justify-between gap-2 text-gray-900">
+                            <span>{a.name}</span>
+                            {isToday && (
+                              <span className="px-2 py-0.5 rounded-full bg-green-600 text-white text-[10px] font-black uppercase tracking-wider">
+                                Today
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-gray-500">
+                            {a.startTime ? new Date(a.startTime.replace(' ', 'T')).toLocaleString() : ''} · {a.distanceKm} km · {mins}:{secs}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
           </div>
           <div className="bg-purple-50 p-5 rounded-xl border border-purple-100 shadow-sm">
             <label className="block text-xs font-black text-purple-800 uppercase tracking-widest mb-3">Run Date</label>
@@ -628,9 +742,9 @@ export default function UploadForm() {
 
         <button
           type="submit"
-          disabled={isUploading || !file}
+          disabled={isUploading || (!file && !garminActivityId)}
           className={`w-full py-4 px-6 rounded-xl text-white font-black text-lg shadow-lg transition-all active:scale-95 ${
-            isUploading || !file ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:shadow-blue-200'
+            isUploading || (!file && !garminActivityId) ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:shadow-blue-200'
           }`}
         >
           {isUploading ? 'Generating AI Review...' : 'Upload & Analyze Run'}
