@@ -11,11 +11,16 @@ const BASE_URL = process.env.GARMIN_API_BASE_URL || 'https://personal.connectapi
 export const GARMIN_PATHS = {
   token: '/personalapitoken-service/personal-api/personal-api-key/token',
   activityList: '/activitylist-service/activities/search/activities',
+  activitySummary: (id: string) => `/activity-service/activity/${id}`,
   fitDownload: (id: string) => `/download-service/files/activity/${id}`,
-  hrv: (from: string, to: string) => `/hrv-service/hrv/daily/${from}/${to}`,
-  sleep: (from: string, to: string) => `/sleep-service/stats/sleep/daily/${from}/${to}`,
-  restingHr: (from: string, to: string) => `/usersummary-service/stats/heartRate/daily/${from}/${to}`,
-  vo2max: (date: string) => `/metrics-service/metrics/maxmet/latest/${date}`,
+  hrvRange: (from: string, to: string) => `/hrv-service/hrv/daily/${from}/${to}`,
+  hrvDay: (date: string) => `/hrv-service/hrv/${date}`,
+  sleepRange: (from: string, to: string) =>
+    `/sleep-service/sleep/dailySleepSummariesByDate?startDate=${from}&endDate=${to}`,
+  dailySummariesV2: (from: string, to: string) =>
+    `/usersummary-service/v2/dailysummaries?startDate=${from}&endDate=${to}`,
+  userSummaryDay: (date: string) => `/usersummary-service/usersummary/daily?calendarDate=${date}`,
+  heartRateZones: '/biometric-service/heartRateZones/v2',
 };
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
@@ -66,10 +71,13 @@ export async function garminFetch(path: string): Promise<Response> {
   return res;
 }
 
-export async function garminJson<T = any>(path: string): Promise<T> {
+export async function garminJson<T = any>(path: string): Promise<T | null> {
   const res = await garminFetch(path);
+  if (res.status === 204) return null;
   if (!res.ok) throw new Error(`Garmin request failed (${res.status}) for ${path}`);
-  return res.json() as Promise<T>;
+  const text = await res.text();
+  if (!text.trim()) return null;
+  return JSON.parse(text) as T;
 }
 
 export async function downloadFit(activityId: string): Promise<Buffer> {

@@ -5,6 +5,7 @@ import RunList from '@/components/RunList';
 import PlannedRuns from '@/components/PlannedRuns';
 import WorkoutList from '@/components/WorkoutList';
 import UserStats from '@/components/UserStats';
+import HealthTrends from '@/components/HealthTrends';
 import WeeklyStats from '@/components/WeeklyStats';
 import PredictionCard from '@/components/PredictionCard';
 import GeminiCoach from '@/components/GeminiCoach';
@@ -48,6 +49,7 @@ export default function Home() {
         </header>
 
         <UserStats />
+        <HealthTrends />
         <WeeklyStats />
         <PredictionCard />
 

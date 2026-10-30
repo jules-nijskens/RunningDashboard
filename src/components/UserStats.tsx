@@ -653,7 +653,7 @@ export default function UserStats() {
         {garminSyncing ? 'Syncing...' : '⌚ Sync Garmin'}
       </button>
     </div>
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
       {/* Card 1: Goals & Status */}
       <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 relative group flex flex-col justify-between hover:shadow-md transition-shadow">
         <button 
@@ -694,54 +694,6 @@ export default function UserStats() {
                 <p className="text-xs font-black text-gray-800 leading-tight">{goal}</p>
               </div>
             ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Card 2: Health & Readiness */}
-      <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-100 relative group hover:shadow-md transition-shadow">
-        <button 
-          onClick={() => setIsEditing(true)} 
-          className="absolute top-4 right-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity hover:text-emerald-500 z-10"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-          </svg>
-        </button>
-        <div className="flex justify-between items-start mb-1">
-          <div>
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Health & Readiness</p>
-            {stats.health?.lastUpdated && (
-              <p className="text-[8px] font-bold text-gray-300 uppercase tracking-tight">Updated {formatRelativeDate(stats.health.lastUpdated)}</p>
-            )}
-          </div>
-          <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter ${
-            stats.health?.hrvStatus === 'Balanced' ? 'bg-emerald-100 text-emerald-700' :
-            stats.health?.hrvStatus === 'Unbalanced' ? 'bg-amber-100 text-amber-700' :
-            stats.health?.hrvStatus === 'Low' ? 'bg-red-100 text-red-700' :
-            'bg-blue-100 text-blue-700'
-          }`}>
-            {stats.health?.hrvStatus}
-          </span>
-        </div>
-        <div className="grid grid-cols-1 gap-3 mt-3">
-          <div className="flex justify-between items-end border-b border-gray-50 pb-2">
-            <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase">HRV (7d Avg)</p>
-              <p className="text-xl font-black text-emerald-600 leading-none">
-                {stats.health?.hrv7d}<span className="text-[10px] ml-0.5 uppercase">ms</span>
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] font-bold text-gray-400 uppercase">RHR (7d Avg)</p>
-              <p className="text-lg font-black text-gray-800 leading-none">
-                {stats.health?.rhr7d}<span className="text-[10px] ml-0.5 uppercase">bpm</span>
-              </p>
-            </div>
-          </div>
-          <div className="flex justify-between items-center">
-            <p className="text-[10px] font-bold text-gray-400 uppercase">Sleep (7d Avg Score)</p>
-            <p className="text-sm font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">{stats.health?.sleep}</p>
           </div>
         </div>
       </div>
