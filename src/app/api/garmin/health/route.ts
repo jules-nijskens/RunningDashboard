@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { verifyAuth } from '@/lib/auth-server';
+import { adminDb } from '@/lib/firebase-admin';
 import { garminJson, downloadFit, GARMIN_PATHS } from '@/lib/garmin';
 import FitParser from 'fit-file-parser';
 
@@ -7,6 +8,15 @@ export const dynamic = 'force-dynamic';
 
 const iso = (d: Date) => d.toISOString().split('T')[0];
 const avg = (nums: number[]) => (nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : undefined);
+
+function berlinDate(d: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Berlin',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+}
 
 function mapHrvStatus(raw?: string): string | undefined {
   if (!raw) return undefined;
@@ -17,20 +27,53 @@ function mapHrvStatus(raw?: string): string | undefined {
   return undefined;
 }
 
+async function verifyCronOrUserAuth(request: Request): Promise<'cron' | 'user'> {
+  const authHeader = request.headers.get('Authorization') || '';
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
+    return 'cron';
+  }
+  await verifyAuth(request);
+  return 'user';
+}
+
 /**
  * Pulls the last 7 days of HRV, resting HR, and sleep scores using the official
  * Garmin Connect Personal API OpenAPI endpoints, plus VO2 max, Threshold Pace,
- * and Threshold HR from heart-rate zones and the latest running activity FIT file.
+ * and Threshold HR from heart-rate zones and the latest running activity FIT file,
+ * and persists the results to Firestore (`settings/user_stats` + history subcollections).
+ *
+ * When invoked by the scheduled job (without `?force=true`), skips if health
+ * metrics were already updated today (Europe/Berlin).
  */
 export async function POST(request: Request) {
   try {
-    await verifyAuth(request);
+    const caller = await verifyCronOrUserAuth(request);
+    const url = new URL(request.url);
+    const force = url.searchParams.get('force') === 'true' || caller === 'user';
 
-    const today = new Date();
-    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-    const weekAgo = new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000);
+    const statsRef = adminDb.doc('settings/user_stats');
+    const statsSnap = await statsRef.get();
+    const currentStats: Record<string, any> = statsSnap.exists ? statsSnap.data() || {} : {};
+
+    const now = new Date();
+    const todayBerlin = berlinDate(now);
+
+    if (!force && currentStats?.health?.lastUpdated) {
+      const lastUpdatedBerlin = berlinDate(new Date(currentStats.health.lastUpdated));
+      if (lastUpdatedBerlin === todayBerlin) {
+        return NextResponse.json({
+          skipped: true,
+          reason: `Already synced today (${todayBerlin})`,
+          lastUpdated: currentStats.health.lastUpdated,
+        });
+      }
+    }
+
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const weekAgo = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
     const from = iso(weekAgo);
-    const to = iso(today);
+    const to = iso(now);
     const yest = iso(yesterday);
 
     const health: Record<string, string> = {};
@@ -46,7 +89,6 @@ export async function POST(request: Request) {
             const data = await garminJson(GARMIN_PATHS.hrvRange(from, to));
             summaries = data?.hrvSummaries || [];
           } catch {
-            // Fall back to single-day HRV endpoint for today / yesterday
             const dayData = (await garminJson(GARMIN_PATHS.hrvDay(to)).catch(() => null))
               || (await garminJson(GARMIN_PATHS.hrvDay(yest)).catch(() => null));
             if (dayData?.hrvSummary) summaries = [dayData.hrvSummary];
@@ -55,7 +97,6 @@ export async function POST(request: Request) {
           const nightly = summaries.map((s) => s?.lastNightAvg).filter((n) => typeof n === 'number');
           const value = weekly.length ? weekly[weekly.length - 1] : avg(nightly);
           if (value !== undefined) health.hrv7d = String(Math.round(value));
-          // Use the most recent day that actually has a usable status
           const mappedStatus = [...summaries]
             .reverse()
             .map((s) => mapHrvStatus(s?.status))
@@ -164,7 +205,47 @@ export async function POST(request: Request) {
       })(),
     ]);
 
-    return NextResponse.json({ health, performance, errors });
+    // Persist to Firestore via Admin SDK
+    const nowIso = now.toISOString();
+    const updated: string[] = [];
+    const nextStats: Record<string, any> = { ...currentStats };
+
+    if (Object.keys(health).length > 0) {
+      nextStats.health = { ...(currentStats.health || {}), ...health, lastUpdated: nowIso };
+      await statsRef.collection('health_history').add({
+        ...nextStats.health,
+        timestamp: nowIso,
+      });
+      updated.push('health');
+    }
+
+    if (Object.keys(performance).length > 0) {
+      const prevPerf = currentStats.performance || {};
+      const mergedPerf = { ...prevPerf, ...performance };
+      const perfChanged =
+        mergedPerf.vo2max !== prevPerf.vo2max ||
+        mergedPerf.thresholdPace !== prevPerf.thresholdPace ||
+        mergedPerf.thresholdHR !== prevPerf.thresholdHR;
+
+      nextStats.performance = {
+        ...mergedPerf,
+        lastUpdated: perfChanged || !prevPerf.lastUpdated ? nowIso : prevPerf.lastUpdated,
+      };
+
+      if (perfChanged) {
+        await statsRef.collection('performance_history').add({
+          ...nextStats.performance,
+          timestamp: nowIso,
+        });
+      }
+      updated.push('performance');
+    }
+
+    if (updated.length > 0) {
+      await statsRef.set(nextStats, { merge: true });
+    }
+
+    return NextResponse.json({ health, performance, updated, errors });
   } catch (error: any) {
     console.error('Garmin health sync failed:', error);
     const status = /Unauthorized/.test(error.message) ? 401 : 500;

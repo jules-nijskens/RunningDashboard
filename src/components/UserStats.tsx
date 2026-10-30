@@ -288,31 +288,19 @@ export default function UserStats() {
     setGarminSyncMsg(null);
     try {
       const token = await auth.currentUser?.getIdToken();
-      const res = await fetch('/api/garmin/health', {
+      const res = await fetch('/api/garmin/health?force=true', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` },
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Garmin sync failed.');
 
-      const now = new Date().toISOString();
-      const updated: string[] = [];
-      const next: UserStatsData = { ...stats };
-
-      if (Object.keys(data.health || {}).length > 0) {
-        next.health = { ...stats.health!, ...data.health, lastUpdated: now };
-        await addDoc(collection(db, 'settings', 'user_stats', 'health_history'), { ...next.health, timestamp: now });
-        updated.push('health');
-      }
-      if (Object.keys(data.performance || {}).length > 0) {
-        next.performance = { ...stats.performance!, ...data.performance, lastUpdated: now };
-        await addDoc(collection(db, 'settings', 'user_stats', 'performance_history'), { ...next.performance, timestamp: now });
-        updated.push('performance');
-      }
-
+      const updated: string[] = data.updated || [];
       if (updated.length > 0) {
-        await setDoc(doc(db, 'settings', 'user_stats'), next);
-        setGarminSyncMsg({ type: 'success', text: `Synced ${updated.join(' & ')} from Garmin${data.errors?.length ? ` (${data.errors.length} metric(s) unavailable)` : ''}.` });
+        setGarminSyncMsg({
+          type: 'success',
+          text: `Synced ${updated.join(' & ')} from Garmin${data.errors?.length ? ` (${data.errors.length} metric(s) unavailable)` : ''}.`,
+        });
       } else {
         setGarminSyncMsg({ type: 'error', text: `Garmin returned no data. ${(data.errors || []).join(' | ')}` });
       }

@@ -4,6 +4,8 @@
 # Reference secrets from Secret Manager
 # Use `firebase apphosting:secrets:set NAME` to add them in production
 secrets:
+  - variable: CRON_SECRET
+    secret: CRON_SECRET
   - variable: GARMIN_API_KEY
     secret: GARMIN_API_KEY
   - variable: GEMINI_API_KEY
@@ -54,6 +56,8 @@ env:
     value: "52.7537"
   - variable: RUN_LON
     value: "13.2367"
+  - variable: CRON_SECRET
+    secret: CRON_SECRET
   - variable: GARMIN_API_KEY
     secret: GARMIN_API_KEY
   - variable: GEMINI_API_KEY
