@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { collection, query, orderBy, where, onSnapshot } from 'firebase/firestore';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceDot, CartesianGrid } from 'recharts';
 import { db } from '@/lib/firebase';
@@ -35,6 +35,28 @@ const METRICS = [
 
 export default function HealthTrends() {
   const [points, setPoints] = useState<HealthPoint[]>([]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const galleryRef = useRef<HTMLDivElement>(null);
+
+  const scrollToSlide = (index: number) => {
+    const el = galleryRef.current;
+    if (!el) return;
+    const bounded = Math.max(0, Math.min(METRICS.length - 1, index));
+    const child = el.children[bounded] as HTMLElement | undefined;
+    if (child) {
+      el.scrollTo({ left: child.offsetLeft - el.offsetLeft, behavior: 'smooth' });
+    }
+    setActiveIndex(bounded);
+  };
+
+  const handleGalleryScroll = () => {
+    const el = galleryRef.current;
+    if (!el || el.clientWidth === 0) return;
+    const idx = Math.round(el.scrollLeft / el.clientWidth);
+    if (idx !== activeIndex && idx >= 0 && idx < METRICS.length) {
+      setActiveIndex(idx);
+    }
+  };
 
   useEffect(() => {
     // Snapshots from the last 90 days (timestamps are ISO strings, so they sort and compare lexically)
@@ -133,11 +155,15 @@ export default function HealthTrends() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div
+        ref={galleryRef}
+        onScroll={handleGalleryScroll}
+        className="flex md:grid md:grid-cols-3 gap-4 overflow-x-auto md:overflow-visible snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+      >
         {METRICS.map((m) => {
           const value = last[m.key];
           return (
-            <div key={m.key} className="rounded-xl border border-gray-100 p-3">
+            <div key={m.key} className="min-w-full shrink-0 snap-center md:min-w-0 rounded-xl border border-gray-100 p-3">
               <div className="flex items-end justify-between mb-1">
                 <div>
                   <p className="text-[10px] font-bold text-gray-400 uppercase">{m.title}</p>
@@ -245,6 +271,20 @@ export default function HealthTrends() {
             </div>
           );
         })}
+      </div>
+
+      <div className="flex md:hidden justify-center items-center gap-1.5 mt-3">
+        {METRICS.map((m, idx) => (
+          <button
+            key={m.key}
+            type="button"
+            onClick={() => scrollToSlide(idx)}
+            aria-label={`View ${m.title}`}
+            className={`h-1.5 rounded-full transition-all ${
+              activeIndex === idx ? 'w-5 bg-gray-800' : 'w-1.5 bg-gray-300'
+            }`}
+          />
+        ))}
       </div>
     </div>
   );
