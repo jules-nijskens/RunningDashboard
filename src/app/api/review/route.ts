@@ -200,8 +200,10 @@ export async function POST(request: Request) {
         
         upcomingRuns = plansSnap.docs.map(doc => {
           const d = doc.data();
+          const hasStrides = /\bstrides?\b(?!\s*length)/i.test(d.description || '') && !/\bstrides?\b/i.test(d.runType || '');
+          const title = hasStrides ? `${d.runType} + Strides` : d.runType;
           return {
-            summary: `${d.runType} • ${d.distance}`,
+            summary: `${title} • ${d.distance}${d.description ? ` (${d.description})` : ''}`,
             start: { date: d.date }
           };
         });

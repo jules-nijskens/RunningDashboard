@@ -541,7 +541,7 @@ export const coachTools: any[] = [
                 properties: {
                   date: { type: SchemaType.STRING, description: "Date of the workout (YYYY-MM-DD)" },
                   startTime: { type: SchemaType.STRING, description: "Start time of the workout (HH:MM)" },
-                  runType: { type: SchemaType.STRING, description: "Type of run (e.g. Easy, Interval, Tempo, Long Run)" },
+                  runType: { type: SchemaType.STRING, description: "Type/title of run (e.g. Easy Run, Easy Run + Strides, Intervals, Tempo, Long Run). Always include '+ Strides' in runType if the workout includes strides." },
                   distance: { type: SchemaType.STRING, description: "Distance (e.g. 5km, 10km, 1:20h)" },
                   description: { type: SchemaType.STRING, description: "Detailed instructions for the workout." }
                 },

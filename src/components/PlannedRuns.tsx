@@ -85,6 +85,16 @@ const getLocalDateKey = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
+const formatWorkoutNameWithStrides = (workoutName: string, description: string) => {
+  if (!workoutName) return '';
+  const hasStridesInDesc = /\bstrides?\b(?!\s*length)/i.test(description);
+  const hasStridesInName = /\bstrides?\b/i.test(workoutName);
+  if (hasStridesInDesc && !hasStridesInName) {
+    return `${workoutName} + Strides`;
+  }
+  return workoutName;
+};
+
 // Parser helper moved to top and typed strictly
 const parseRunnaEvent = (event: CalendarEvent) => {
   const summary = (event.summary || '').replace(/🏃/g, '').trim();
@@ -148,11 +158,13 @@ const parseRunnaEvent = (event: CalendarEvent) => {
   if (summaryDetails.includes('📲')) summaryDetails = summaryDetails.split('📲')[0].trim();
   if (instructionBlock.includes('📲')) instructionBlock = instructionBlock.split('📲')[0].trim();
   
+  const finalDescription = instructionBlock || summaryDetails;
+  
   return { 
-    workoutName, 
+    workoutName: formatWorkoutNameWithStrides(workoutName, finalDescription), 
     distance, 
     runType, 
-    description: instructionBlock || summaryDetails 
+    description: finalDescription 
   };
 };
 
@@ -369,12 +381,14 @@ export default function PlannedRuns() {
             const fetchedItems: WorkoutItem[] = [];
             querySnapshot.forEach((docSnap) => {
               const p = docSnap.data();
+              const rawName = p.runType || '';
+              const desc = p.description || '';
               fetchedItems.push({
                 id: docSnap.id,
-                workoutName: p.runType || '',
+                workoutName: formatWorkoutNameWithStrides(rawName, desc),
                 distance: p.distance || '',
-                runType: p.runType || '',
-                description: p.description || '',
+                runType: rawName,
+                description: desc,
                 date: p.date || '',
                 startTime: p.startTime
               });
