@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { doc, onSnapshot, setDoc, collection, addDoc, deleteDoc, updateDoc, query, orderBy } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, collection, addDoc, deleteDoc, updateDoc, query, orderBy, runTransaction } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import { Shoe } from '@/types/run';
 import { Trash2, Plus, AlertTriangle, Check, Edit2, X, Trophy } from 'lucide-react';
@@ -78,14 +78,23 @@ export default function UserStats() {
         shoeList.push({ id: docSnap.id, ...docSnap.data() } as Shoe);
       });
 
-      if (shoeList.length === 0 && snapshot.empty) {
+      // Only seed defaults from a confirmed (server) empty result, never from a cache/initial empty read.
+      // Fixed document IDs + create-if-missing transaction make this idempotent, so Strict Mode
+      // double-mounts, multiple tabs, or multiple environments can't create duplicates.
+      if (shoeList.length === 0 && snapshot.empty && !snapshot.metadata.fromCache) {
         try {
           const defaults = [
-            { name: 'Superblast 2', maxDistance: 800, currentDistance: 0, createdAt: Date.now() },
-            { name: 'Kayano', maxDistance: 800, currentDistance: 0, createdAt: Date.now() }
+            { id: 'superblast-2', name: 'Superblast 2' },
+            { id: 'kayano', name: 'Kayano' },
           ];
-          for (const shoe of defaults) {
-            await addDoc(collection(db, 'shoes'), shoe);
+          for (const d of defaults) {
+            const ref = doc(db, 'shoes', d.id);
+            await runTransaction(db, async (tx) => {
+              const existing = await tx.get(ref);
+              if (!existing.exists()) {
+                tx.set(ref, { name: d.name, maxDistance: 800, currentDistance: 0, createdAt: Date.now() });
+              }
+            });
           }
           return;
         } catch (err) {

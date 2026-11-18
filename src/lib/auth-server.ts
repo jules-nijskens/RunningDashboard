@@ -1,4 +1,4 @@
-import { adminDb } from './firebase-admin';
+import './firebase-admin'; // side effect: initializes the default Admin app
 import * as admin from 'firebase-admin';
 
 export async function verifyAuth(request: Request) {

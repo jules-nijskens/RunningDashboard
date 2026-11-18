@@ -1,6 +1,32 @@
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { Run, Workout } from "@/types/run";
 
+// Athlete's HR zones, as % of lactate threshold heart rate (LTHR)
+export const HR_ZONE_PERCENTS = [
+  { zone: 'Z1', name: 'Warm Up', from: 65, to: 81 },
+  { zone: 'Z2', name: 'Easy', from: 81, to: 90 },
+  { zone: 'Z3', name: 'Aerobic', from: 90, to: 95 },
+  { zone: 'Z4', name: 'Threshold', from: 95, to: 101 },
+  { zone: 'Z5', name: 'Maximum', from: 101, to: null as number | null },
+];
+
+export function computeHrZones(lthr: number | string | undefined | null): { zone: string; name: string; range: string }[] | null {
+  const l = typeof lthr === 'string' ? parseFloat(lthr) : lthr;
+  if (!l || !isFinite(l) || l <= 0) return null;
+  return HR_ZONE_PERCENTS.map(z => ({
+    zone: z.zone,
+    name: z.name,
+    range: z.to === null ? `>${Math.round(l * z.from / 100)} bpm` : `${Math.round(l * z.from / 100)}-${Math.round(l * z.to / 100)} bpm`,
+  }));
+}
+
+export function hrZonesPromptText(lthr: number | string | undefined | null): string {
+  const zones = computeHrZones(lthr);
+  const pct = HR_ZONE_PERCENTS.map(z => `${z.zone} ${z.name} ${z.to === null ? '>' + z.from : z.from + '-' + z.to}%`).join(', ');
+  if (!zones) return `HR zones are based on % of LTHR (${pct}), but LTHR is unknown, so do not give exact BPM targets.`;
+  return `HR zones (based on LTHR ${lthr} bpm): ${zones.map(z => `${z.zone} ${z.name} ${z.range}`).join('; ')}.`;
+}
+
 export async function generateRunReview(
   runData: Run, 
   trainingReport?: string,
@@ -56,20 +82,22 @@ export async function generateRunReview(
 
   const userStats = context?.userStats || {};
   const healthPerformanceContext = `
-    - VO2 Max: ${userStats.performance?.vo2max || 'N/A'}
+    - VO2 Max: ${userStats.performance?.vo2max || 'N/A'} (Updated: ${(userStats.performance as any)?.lastUpdated || 'Unknown'})
     - Lactate Threshold: ${userStats.performance?.thresholdPace || 'N/A'} @ ${userStats.performance?.thresholdHR || 'N/A'} bpm
-    - HRV (7d Avg): ${userStats.health?.hrv7d || 'N/A'} ms
+    - HRV (7d Avg): ${userStats.health?.hrv7d || 'N/A'} ms (Updated: ${(userStats.health as any)?.lastUpdated || 'Unknown'})
     - HRV Status: ${userStats.health?.hrvStatus || 'N/A'}
     - Resting HR (7d Avg): ${userStats.health?.rhr7d || 'N/A'} bpm
     - Sleep (7d Avg Score): ${userStats.health?.sleep || 'N/A'}
   `;
 
   const prompt = `
-    You are an expert running coach for an 194cm athlete. August 1st Goal: Sub-47:30 10K.
+    You are an expert running coach for an 194cm athlete.
+    CURRENT GOALS: ${(userStats as any).goals?.join(', ') || 'None set'}
     Today's Date: ${new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
     
     STRATEGY: ${trainingReport || "N/A"}
     PHYSIOLOGICAL CONTEXT: ${healthPerformanceContext}
+    ${hrZonesPromptText(userStats.performance?.thresholdHR)}
     RECENT HISTORY (7 Days):
     Runs: ${recentRunsContext}
     Gym: ${recentWorkoutsContext}
@@ -96,6 +124,11 @@ export async function generateRunReview(
     Take upcoming runs AND custom life events into account (e.g. if a hard run is next or they have social drinks or a concert tonight/tomorrow, suggest extra recovery, proper rest, or timing adjustments).
     Use the PHYSIOLOGICAL CONTEXT to explain performance variations (e.g., if HRV is unbalanced or sleep is low, acknowledge that the athlete might have felt flatter).
  
+    DATA FRESHNESS:
+    - Performance data (VO2 Max, Lactate Threshold, PBs, past race results, previous predictions) may be outdated and no longer relevant, e.g. after a layoff, injury, or months of different training.
+    - Always check the "Updated" / lastUpdated date and compare it to today's date. If data is old or contradicts the recent runs, treat it as a stale reference, not as current fitness, and say so.
+    - Prefer recent runs and recent health trends over old PRs or metrics. Do not anchor paces or goals on old numbers without checking they still fit.
+
     DATA INTERPRETATION RULES:
     1. LAST LAP SENSITIVITY: If the final lap is very short (e.g., < 100m) and slow, assume the athlete forgot to stop their watch immediately. Mention the main run stats but ignore the "tail" in your performance analysis.
     2. CADENCE ANALYSIS: If a training session includes walking segments (detected by very low pace or laps with cadence < 120), you MUST IGNORE the "Average Cadence" metric for the entire session and the cadence of those walking segments. Only look at the cadence of the actual running laps to determine form. If you cannot isolate the running cadence, do not mention cadence at all.
@@ -155,6 +188,11 @@ export async function updateTrainingReport(currentReport: string, runData: Run, 
     Athlete Notes: ${runData.summary || "None"}
     Current Physiological Metrics: ${healthPerformanceContext}
     Current Training Focus Status: ${userStats.status || "N/A"}
+
+    DATA FRESHNESS:
+    - Performance data (VO2 Max, Lactate Threshold, PBs, past race results, previous predictions) may be outdated and no longer relevant, e.g. after a layoff, injury, or months of different training.
+    - Always check the "Updated" / lastUpdated date and compare it to today's date. If data is old or contradicts the recent runs, treat it as a stale reference, not as current fitness, and say so.
+    - Prefer recent runs and recent health trends over old PRs or metrics. Do not anchor paces or goals on old numbers without checking they still fit.
 
     DATA INTERPRETATION RULES:
     1. CADENCE ANALYSIS: If this run included walking segments or if the average cadence is misleadingly low due to breaks, you MUST IGNORE the cadence for this session when updating "Biomechanics & Form Trends". Only use cadence data that you are certain represents active running.
@@ -306,7 +344,7 @@ export async function generatePrediction(
       - Keep sentences clear, direct, and encouraging. Explain all numbers and advice so they are easy for a recreational runner to follow and put into practice.
       
       TASK:
-      1. Interpret the current rolling EF (${efDetails.currentEF}) and the trend (${efDetails.efTrendPercent}%). Connect it to their recovery from the recent layoff, their unbalanced HRV (${userStats.health?.hrv7d || 'N/A'} ms), cardiovascular drift observed in their runs (like the August 2nd return jog), or biomechanics.
+      1. Interpret the current rolling EF (${efDetails.currentEF}) and the trend (${efDetails.efTrendPercent}%). Connect it to their recent training and recovery, their HRV (${userStats.health?.hrv7d || 'N/A'} ms, status: ${userStats.health?.hrvStatus || 'N/A'}), any heart-rate climb visible in the recent run details below, or biomechanics. Only reference runs that appear in the data provided.
       2. Evaluate their autonomic nervous system (HRV & Sleep) and estimate their overall "Autonomic Readiness / Base Building Load Capacity" on a scale from 0 to 100%. (This maps to the "probability" field in the JSON).
       3. Write a brief, punchy coach comment (max 25 words) summing up their current aerobic base state.
       4. Write a detailed reasoning (2-3 paragraphs) detailing your analysis of their efficiency trends, heart rate decoupling, and how to structure their Zone 2/strength sessions over the next 2 weeks. Be specific about recent dates.
@@ -350,6 +388,11 @@ export async function generatePrediction(
       ${runsContext}
       
       IMPORTANT: Pay close attention to the "Structure" (aiDescription) and the individual "Laps" listed for each run. This describes the actual breakdown (e.g., distinguishing warmup from main effort). You must evaluate the pace, intensity, and average heart rate of the *main effort* described in the structure and laps to anchor your fitness estimate.
+
+      DATA FRESHNESS:
+      - Performance data (VO2 Max, Lactate Threshold, PBs, past race results, previous predictions) may be outdated and no longer relevant, e.g. after a layoff, injury, or months of different training.
+      - Always check the "Updated" / lastUpdated date and compare it to today's date. If data is old or contradicts the recent runs, treat it as a stale reference, not as current fitness, and say so.
+      - Prefer recent runs and recent health trends over old PRs or metrics. Do not anchor paces or goals on old numbers without checking they still fit.
 
       DATA INTERPRETATION RULES:
       1. CADENCE ANALYSIS: If a run structure indicates walking or if the average cadence is significantly lower than typical running cadence, you MUST IGNORE the "Cadence" metric for that run.
@@ -402,7 +445,7 @@ export async function generatePrediction(
     // Return a fallback prediction instead of null to avoid hiding the card
     return {
       targetDistance: isBuildingMode ? "Aerobic Efficiency (EF)" : "10K",
-      targetTime: isBuildingMode ? "Base Building" : "Sub-47:30",
+      targetTime: isBuildingMode ? "Base Building" : "--",
       currentEstimate: isBuildingMode ? "--" : "--:--",
       probability: 50,
       coachComment: "I'm having trouble analyzing your data right now. Check back in a moment.",
@@ -419,7 +462,7 @@ export const COACH_SYSTEM_INSTRUCTION = `
 You are "The Coach", a world-class running and strength coach for a tall athlete (194cm).
 You are direct, motivating, and data-driven.
 You have access to the athlete's full history, including runs, gym workouts, and long-term strategy.
-Your goal is to help the athlete reach their goals (currently Sub-47:30 10K by August 1st).
+Your goal is to help the athlete reach their current goals. Use the \`get_athlete_data\` tool to see their goals (stored in the athlete stats) rather than assuming them.
 
 ATHLETE PREFERENCES & SCHEDULE:
 - WEEKLY RHYTHM: 4 runs per week, always in the morning.
@@ -445,6 +488,16 @@ CONTEXTUAL AWARENESS:
 - **CUSTOM LIFE EVENTS:** You have access to the athlete's custom scheduled life events (e.g., social drinks, concerts, work meetings, travel). Check these events to see if they conflict with training days or might impact recovery and fatigue (e.g., suggest rest or lighter runs if the athlete has drinks scheduled the night before a run).
 - **PLAN VISIBILITY:** By default, you only see the next 10 upcoming runs. If you need to see the entire long-term training plan (e.g., to review a 2-month block or check a race date far in the future), explicitly use the \`get_athlete_data\` tool with \`includeFullPlan: true\`.
 - IMPORTANT: You can now generate or **revise** a training plan using the "generate_training_plan" tool. If you notice the athlete is consistently over-performing, struggling with fatigue, or if their physiological metrics (HRV/Sleep) are poor, proactively suggest specific improvements to the upcoming plan and call the tool to update it after confirmation.
+
+HEART RATE ZONES & TARGETS:
+- The athlete uses HR zones based on % of lactate threshold HR (LTHR): Z1 Warm Up 65-81%, Z2 Easy 81-90%, Z3 Aerobic 90-95%, Z4 Threshold 95-101%, Z5 Maximum >101%.
+- \`get_athlete_data\` returns the athlete's LTHR (stats.performance.thresholdHR) and the computed BPM ranges as \`hrZones\`. Use these exact BPM ranges whenever you give heart rate targets in advice or in training plans (e.g. "Easy Run, Z2: 138-153 bpm"). Never invent other zone definitions.
+- Pace targets: anchor them on the athlete's lactate threshold pace and recent runs (what pace actually produced which heart rate), and state the pace and BPM together. If LTHR or threshold pace is missing or outdated, say so and give effort/zone descriptions instead of exact numbers.
+
+DATA FRESHNESS:
+- Performance data (VO2 Max, Lactate Threshold, PBs, past race results, previous predictions) may be outdated and no longer relevant, e.g. after a layoff, injury, or months of different training.
+- Always check the "Updated" / lastUpdated date and compare it to today's date. If data is old or contradicts the recent runs, treat it as a stale reference, not as current fitness, and say so.
+- Prefer recent runs and recent health trends over old PRs or metrics. Do not anchor paces or goals on old numbers without checking they still fit.
 
 DATA INTERPRETATION RULES:
 1. LAST LAP SENSITIVITY: If a run's final lap is very short (e.g., < 100m) and slow, assume the athlete stopped their watch late. Ignore this "tail" in your analysis.

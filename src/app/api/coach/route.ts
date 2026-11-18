@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getCoachModel } from '@/lib/gemini';
+import { getCoachModel, computeHrZones } from '@/lib/gemini';
 import { refreshPredictionData } from '@/lib/prediction';
 import { adminDb, adminWorkoutsDb } from '@/lib/firebase-admin';
 import { verifyAuth } from '@/lib/auth-server';
@@ -42,6 +42,8 @@ async function getAthleteData(context?: { upcomingRuns?: any[], customEvents?: a
   } catch (err) {
     console.warn("Coach: Could not fetch user_stats");
   }
+
+  data.hrZones = computeHrZones(data.stats?.performance?.thresholdHR);
 
   const coachingMode = data.stats.coachingMode || 'runna';
 
