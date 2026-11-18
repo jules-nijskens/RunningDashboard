@@ -64,6 +64,7 @@ export default function UploadForm() {
   const [selectedEmojis, setSelectedEmojis] = useState<string[]>([]);
   const [customEmojiInput, setCustomEmojiInput] = useState<string>('');
   const [garminActivities, setGarminActivities] = useState<{ id: string; name: string; startTime: string; distanceKm: number; durationSec: number }[]>([]);
+  const [garminWarning, setGarminWarning] = useState<string | null>(null);
   const [garminLoading, setGarminLoading] = useState(false);
   const [garminActivityId, setGarminActivityId] = useState<string | null>(null);
 
@@ -250,16 +251,30 @@ export default function UploadForm() {
     return [];
   };
 
+  const toLocalDateTime = (ts: number) => {
+    const d = new Date(ts);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return {
+      date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+      time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+    };
+  };
+
   const handleLoadGarminActivities = async () => {
     setGarminLoading(true);
     setMessage(null);
+    setGarminWarning(null);
     try {
       const token = await auth.currentUser?.getIdToken();
       const res = await fetch('/api/garmin/activities', { headers: { 'Authorization': `Bearer ${token}` } });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to load Garmin activities.');
-      setGarminActivities(data.activities || []);
-      if (!data.activities?.length) setMessage({ type: 'error', text: 'No recent runs found on Garmin.' });
+      const latest = data.activities?.[0];
+      if (!latest) {
+        setMessage({ type: 'error', text: 'No recent runs found on Garmin.' });
+        return;
+      }
+      await handleSelectGarminActivity(latest.id);
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message || 'Failed to load Garmin activities.' });
     } finally {
@@ -292,9 +307,16 @@ export default function UploadForm() {
       if (fileInput) fileInput.value = '';
       setGarminActivityId(activityId);
       setParsedRunData(parsed);
-      if (parsed.date) setRunDate(parsed.date);
-      if (parsed.time) setRunTime(parsed.time);
+      // Derive date/time in the user's (browser) timezone, not the server's
+      const local = parsed.timestamp ? toLocalDateTime(parsed.timestamp) : null;
+      const date = local?.date || parsed.date;
+      const time = local?.time || parsed.time;
+      if (date) setRunDate(date);
+      if (time) setRunTime(time);
       if (parsed.location) setLocation(parsed.location);
+      if (date && date !== toLocalDateTime(Date.now()).date) {
+        setGarminWarning(`Warning: this run is from ${date}, not today.`);
+      }
       setMessage({ type: 'success', text: 'Garmin activity imported! Add your feedback below, then submit.' });
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message || 'Failed to import Garmin activity.' });
@@ -308,6 +330,7 @@ export default function UploadForm() {
       const selectedFile = e.target.files[0];
       setFile(selectedFile);
       setGarminActivityId(null);
+      setGarminWarning(null);
       setParsedRunData(null);
       setIsUploading(true);
       setMessage(null);
@@ -334,8 +357,9 @@ export default function UploadForm() {
         setParsedRunData(parsed);
 
         // Pre-populate date/time if available
-        if (parsed.date) setRunDate(parsed.date);
-        if (parsed.time) setRunTime(parsed.time);
+        const localFit = parsed.timestamp ? toLocalDateTime(parsed.timestamp) : null;
+        if (localFit?.date || parsed.date) setRunDate((localFit?.date || parsed.date) as string);
+        if (localFit?.time || parsed.time) setRunTime((localFit?.time || parsed.time) as string);
         if (parsed.location) setLocation(parsed.location);
 
         setMessage({ type: 'success', text: 'FIT file uploaded and parsed successfully!' });
@@ -518,44 +542,8 @@ export default function UploadForm() {
               {garminActivityId && (
                 <p className="mt-2 text-[11px] font-bold text-green-700">✓ Garmin activity {garminActivityId} imported</p>
               )}
-              {garminActivities.length > 0 && (
-                <ul className="mt-3 space-y-2 max-h-56 overflow-y-auto">
-                  {garminActivities.map((a) => {
-                    const mins = Math.floor(a.durationSec / 60);
-                    const secs = String(a.durationSec % 60).padStart(2, '0');
-                    const now = new Date();
-                    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-                    const isToday = (a.startTime || '').slice(0, 10) === todayStr;
-                    return (
-                      <li key={a.id}>
-                        <button
-                          type="button"
-                          onClick={() => handleSelectGarminActivity(a.id)}
-                          disabled={isUploading}
-                          className={`w-full text-left p-3 rounded-xl border-2 text-xs font-bold transition-all disabled:opacity-50 ${
-                            garminActivityId === a.id
-                              ? 'border-blue-600 bg-blue-100'
-                              : isToday
-                                ? 'border-green-500 bg-green-50 hover:border-green-600 shadow-md ring-2 ring-green-200'
-                                : 'border-gray-200 bg-white hover:border-blue-400'
-                          }`}
-                        >
-                          <span className="flex items-center justify-between gap-2 text-gray-900">
-                            <span>{a.name}</span>
-                            {isToday && (
-                              <span className="px-2 py-0.5 rounded-full bg-green-600 text-white text-[10px] font-black uppercase tracking-wider">
-                                Today
-                              </span>
-                            )}
-                          </span>
-                          <span className="text-gray-500">
-                            {a.startTime ? new Date(a.startTime.replace(' ', 'T')).toLocaleString() : ''} · {a.distanceKm} km · {mins}:{secs}
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
+              {garminWarning && (
+                <p className="mt-2 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">⚠️ {garminWarning}</p>
               )}
             </div>
           </div>

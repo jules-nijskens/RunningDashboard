@@ -14,7 +14,7 @@ export async function GET(request: Request) {
         const key = a?.activityType?.typeKey || '';
         return key.includes('running');
       })
-      .slice(0, 3)
+      .slice(0, 1)
       .map((a) => ({
         id: String(a.activityId),
         name: a.activityName || 'Run',
